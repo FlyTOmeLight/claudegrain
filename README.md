@@ -34,7 +34,7 @@ See [docs/adr/0001-three-tier-data-source.md](docs/adr/0001-three-tier-data-sour
 
 ## Install
 
-Grab the latest DMG from [GitHub Releases](https://github.com/Artzainnn/claudegrain/releases/latest).
+Grab the latest DMG from [GitHub Releases](https://github.com/FlyTOmeLight/claudegrain/releases/latest).
 
 > **First launch — Gatekeeper hoop**
 >
@@ -56,7 +56,7 @@ Requires macOS 14+ (Sonoma). Apple Silicon and Intel both supported.
 ### Build from source
 
 ```bash
-git clone https://github.com/Artzainnn/claudegrain
+git clone https://github.com/FlyTOmeLight/claudegrain
 cd claudegrain
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
   bash scripts/build-dmg.sh
