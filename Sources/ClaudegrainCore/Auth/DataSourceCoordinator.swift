@@ -58,6 +58,11 @@ public actor DataSourceCoordinator {
 
     public func currentState() -> State { state }
 
+    /// Trigger an out-of-band tick. Polled loop continues independently.
+    public func refreshNow() async {
+        await tickOnce()
+    }
+
     private func poll() async {
         while !Task.isCancelled {
             await tickOnce()

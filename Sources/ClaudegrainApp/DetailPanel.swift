@@ -123,9 +123,12 @@ private struct ReceiptBody: View {
     }
 
     private var weekPoints: [Double] {
-        // Placeholder until 7d history wired to LimitEstimator/EventsDatabase aggregates.
-        let today = max(model.todayTotals.costUSD, 0.5)
-        return [4.2, 5.8, 3.2, 7.1, 6.4, 5.2, today]
+        guard model.weekSpend.count == 7 else {
+            // Cold-start fallback before first ingest snapshot lands.
+            let today = max(model.todayTotals.costUSD, 0.5)
+            return [today * 0.5, today * 0.7, today * 0.4, today * 0.85, today * 0.75, today * 0.6, today]
+        }
+        return model.weekSpend
     }
 
     private var cacheBaselineLabel: String {
@@ -190,18 +193,29 @@ private struct TopCostsList: View {
                     type: "[R]",
                     name: repo.repo,
                     costUSD: repo.costUSD,
-                    deltaPct: nil,
-                    sparkPoints: placeholderSpark(for: repo.repo)
+                    deltaPct: deltaPct(for: repo),
+                    sparkPoints: sparkPoints(for: repo)
                 )
             }
         }
     }
 
-    private func placeholderSpark(for name: String) -> [Double] {
-        // Deterministic-ish sparkline based on name hash until per-repo 7d query lands.
-        let h = abs(name.hashValue % 100)
+    /// Real 7d series from `RepoBreakdown.spend7d`. Falls back to ramp until the
+    /// first snapshot lands.
+    private func sparkPoints(for repo: RepoBreakdown) -> [Double] {
+        if !repo.spend7d.isEmpty { return repo.spend7d }
+        let h = abs(repo.repo.hashValue % 100)
         let base = Double(h) / 100.0
         return (0..<7).map { i in 0.3 + base * 0.7 + sin(Double(i) + base * 6) * 0.15 }
+    }
+
+    /// Today vs prior 6-day average (most useful direction signal in a 7-point series).
+    private func deltaPct(for repo: RepoBreakdown) -> Int? {
+        guard repo.spend7d.count == 7 else { return nil }
+        let today = repo.spend7d.last ?? 0
+        let priorAvg = repo.spend7d.dropLast().reduce(0, +) / Double(max(repo.spend7d.count - 1, 1))
+        guard priorAvg > 0.01 else { return nil }
+        return Int(((today - priorAvg) / priorAvg * 100).rounded())
     }
 }
 
@@ -371,13 +385,14 @@ private struct NetTotalRow: View {
 
 private struct FooterBlock: View {
     @Environment(\.theme) private var theme
+    @Environment(\.openSettings) private var openSettings
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 6) {
-                kbd("F2", "cfg") { /* TODO: settings */ }
-                kbd("F5", "refresh") { /* TODO: refresh */ }
+                kbd("F2", "cfg") { openSettingsWindow() }
+                kbd("F5", "refresh") { triggerRefresh() }
                 kbd("F10", "quit") { NSApp.terminate(nil) }
             }
             .padding(.top, 6)
@@ -407,6 +422,22 @@ private struct FooterBlock: View {
     private var eventCount: String {
         // Placeholder formatter; wire to EventsDatabase row count later.
         "—"
+    }
+
+    private func openSettingsWindow() {
+        // LSUIElement = true ⇒ default policy is .accessory; activate explicitly
+        // so the Settings scene window comes forward and accepts focus.
+        NSApp.activate(ignoringOtherApps: true)
+        openSettings()
+    }
+
+    private func triggerRefresh() {
+        guard let handler = model.refreshHandler, !model.isRefreshing else { return }
+        model.isRefreshing = true
+        Task { @MainActor in
+            await handler()
+            model.isRefreshing = false
+        }
     }
 
     private func kbd(_ key: String, _ desc: String, action: @escaping () -> Void) -> some View {

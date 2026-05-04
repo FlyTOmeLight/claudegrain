@@ -50,3 +50,32 @@ Initial public release.
   turn); see `docs/adr/0003-primary-tool-attribution.md`
 - Per-row 7d sparkline data is currently mocked client-side; live wiring to
   `EventsDatabase.tokensSince` ships in 0.2
+
+## [0.1.2] — 2026-05-05
+
+### Added
+- Real per-repo 7d sparkline trend in top-cost rows (was mocked client-side)
+- Real 7d weekly spend chart driven by `EventsDatabase.costPerDay`
+- Burn-rate notification (toggle b): fires when current 5h block usage is at
+  ≥2× linear pace expected for the elapsed time
+- Repo-overspend notification (toggle d): fires per-repo per-day when today's
+  cost crosses the configured threshold (default $10)
+- F5 refresh action wired through `IngestActor.refreshNow` +
+  `DataSourceCoordinator.refreshNow`
+- LiteLLM-backed price catalog with disk cache + background refresh
+  (`PriceTableLoader`); built-in defaults still cover cold-start
+- Cross-file event dedup via `(message.id, requestId)` key — fixes double
+  counting when an assistant turn appears in both parent transcript and a
+  forked sidechain jsonl
+
+### Performance
+- Bootstrap pre-filters files whose persisted cursor matches on-disk size, so
+  warm boots skip unchanged jsonl entirely (was full re-scan every launch)
+- Bootstrap reads up to 6 files concurrently via `withThrowingTaskGroup`
+- Initial cold scan still ~2.5 min for ~2k files; second launch is now near-
+  instant
+
+### Fixed
+- v0.1.1 already fixed: `Bundle.module` blew up inside `.app` because SwiftPM's
+  generated accessor didn't check `Contents/Resources/`. Resolved manually
+  with FileManager existence checks across all candidate paths.

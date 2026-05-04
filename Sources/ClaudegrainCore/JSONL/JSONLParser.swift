@@ -36,6 +36,8 @@ public struct JSONLParser: Sendable {
         let sessionId = raw["sessionId"] as? String ?? ""
         let cwd = raw["cwd"] as? String
         let gitBranch = raw["gitBranch"] as? String
+        let messageId = message["id"] as? String
+        let requestId = raw["requestId"] as? String
 
         return UsageEvent(
             timestamp: timestamp,
@@ -47,7 +49,9 @@ public struct JSONLParser: Sendable {
             inputTokens: inputTokens,
             outputTokens: outputTokens,
             cacheCreationTokens: cacheCreate,
-            cacheReadTokens: cacheRead
+            cacheReadTokens: cacheRead,
+            messageId: messageId,
+            requestId: requestId
         )
     }
 

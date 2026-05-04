@@ -12,6 +12,11 @@ public struct UsageEvent: Equatable, Sendable {
     public let outputTokens: Int
     public let cacheCreationTokens: Int
     public let cacheReadTokens: Int
+    /// Anthropic message id from `message.id`. Used (with `requestId`) to dedupe
+    /// the same assistant turn appearing in multiple jsonl files (sidechains, forks).
+    public let messageId: String?
+    /// Top-level `requestId` written by Claude Code per backend round-trip.
+    public let requestId: String?
 
     public init(
         timestamp: Date,
@@ -23,7 +28,9 @@ public struct UsageEvent: Equatable, Sendable {
         inputTokens: Int,
         outputTokens: Int,
         cacheCreationTokens: Int,
-        cacheReadTokens: Int
+        cacheReadTokens: Int,
+        messageId: String? = nil,
+        requestId: String? = nil
     ) {
         self.timestamp = timestamp
         self.sessionId = sessionId
@@ -35,6 +42,15 @@ public struct UsageEvent: Equatable, Sendable {
         self.outputTokens = outputTokens
         self.cacheCreationTokens = cacheCreationTokens
         self.cacheReadTokens = cacheReadTokens
+        self.messageId = messageId
+        self.requestId = requestId
+    }
+
+    /// Stable cross-file dedup key. Same assistant turn = same key, regardless of
+    /// which transcript / sidechain file replays it. Nil when both ids missing.
+    public var dedupKey: String? {
+        guard let messageId, let requestId else { return nil }
+        return "\(messageId)|\(requestId)"
     }
 
     public var totalTokens: Int {
@@ -103,15 +119,20 @@ public struct DailyTotals: Sendable {
 }
 
 public struct RepoBreakdown: Identifiable, Sendable {
-    public var id: String { repo }
+    public var id: String { fullCwd ?? repo }
     public let repo: String
+    public let fullCwd: String?
     public let costUSD: Double
     public let totalTokens: Int
+    /// 7-day spend trend in USD, oldest → newest. Populated by aggregator after top-repos fetch.
+    public var spend7d: [Double]
 
-    public init(repo: String, costUSD: Double, totalTokens: Int) {
+    public init(repo: String, fullCwd: String? = nil, costUSD: Double, totalTokens: Int, spend7d: [Double] = []) {
         self.repo = repo
+        self.fullCwd = fullCwd
         self.costUSD = costUSD
         self.totalTokens = totalTokens
+        self.spend7d = spend7d
     }
 }
 

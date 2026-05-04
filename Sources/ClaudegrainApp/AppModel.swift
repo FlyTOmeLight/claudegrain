@@ -10,7 +10,12 @@ final class AppModel: ObservableObject {
     @Published var topRepos: [RepoBreakdown] = []
     @Published var topTools: [ToolBreakdown] = []
     @Published var cacheHitRate: Double = 0
+    @Published var weekSpend: [Double] = []
     @Published var dataSourceStatus: DataSourceStatus = .unknown
+    @Published var isRefreshing: Bool = false
+
+    /// Wired by `AppDelegate` after `AppCoordinator` is constructed. Nil during preview/spike.
+    var refreshHandler: (@MainActor () async -> Void)?
 
     let loginItem: LoginItemController
     let preferences: Preferences

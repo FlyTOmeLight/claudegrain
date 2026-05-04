@@ -17,6 +17,7 @@ public actor IngestActor {
         public let topRepos: [RepoBreakdown]
         public let topTools: [ToolBreakdown]
         public let cacheHitRate: Double
+        public let weekSpend: [Double]
     }
 
     public init(db: EventsDatabase, projectsRoot: URL? = nil) {
@@ -37,10 +38,47 @@ public actor IngestActor {
     public func bootstrap(daysBack: Int = 7) async throws {
         let cutoff = Date().addingTimeInterval(-Double(daysBack) * 86400)
         let files = enumerateJSONL(modifiedAfter: cutoff)
-        for url in files {
-            try await ingest(file: url)
+
+        // Pre-filter: files whose on-disk size matches the persisted cursor have
+        // nothing new to ingest. Repeat boots become near-instant once cursors are warm.
+        let candidates = await filterUnseen(files: files)
+
+        // Bounded concurrency. Disk reads + parsing can overlap; DB writes
+        // serialize naturally inside the actor.
+        try await withThrowingTaskGroup(of: Void.self) { group in
+            let maxConcurrent = 6
+            var inflight = 0
+            var iterator = candidates.makeIterator()
+
+            func enqueueNext() {
+                guard let url = iterator.next() else { return }
+                inflight += 1
+                group.addTask { [weak self] in
+                    try await self?.ingest(file: url)
+                }
+            }
+            for _ in 0..<maxConcurrent { enqueueNext() }
+            for try await _ in group {
+                inflight -= 1
+                enqueueNext()
+            }
         }
         await publishSnapshotNow()
+    }
+
+    private func filterUnseen(files: [URL]) async -> [URL] {
+        var keep: [URL] = []
+        for url in files {
+            let canonical = url.resolvingSymlinksInPath().path
+            let attrs = (try? FileManager.default.attributesOfItem(atPath: url.path)) ?? [:]
+            let size = (attrs[.size] as? UInt64) ?? 0
+            if let cursor = try? await db.cursor(for: canonical),
+               cursor.sizeAtLastRead == size && size > 0 {
+                continue   // unchanged since last bootstrap
+            }
+            keep.append(url)
+        }
+        return keep
     }
 
     public func startWatching() async {
@@ -68,6 +106,12 @@ public actor IngestActor {
         publishTask = nil
         snapshotContinuation?.finish()
         snapshotContinuation = nil
+    }
+
+    /// Force a re-scan of recent JSONL + immediate snapshot publish. Wired to F5.
+    public func refreshNow(daysBack: Int = 7) async {
+        try? await bootstrap(daysBack: daysBack)
+        await publishSnapshotNow()
     }
 
     private func handleChanged(paths: [String]) async {
@@ -107,10 +151,29 @@ public actor IngestActor {
         let now = Date()
         do {
             let totals = try await db.dailyTotals(on: now)
-            let repos = try await db.topRepos(on: now)
+            var repos = try await db.topRepos(on: now)
             let tools = try await db.topTools(on: now)
             let cache = try await db.cacheHitRate(on: now)
-            snapshotContinuation?.yield(.init(today: totals, topRepos: repos, topTools: tools, cacheHitRate: cache))
+            let weekSpend = try await db.costPerDay(days: 7, now: now)
+
+            // Hydrate per-repo 7d trends so cost-row sparklines reflect real data.
+            let cwds = repos.compactMap(\.fullCwd)
+            if !cwds.isEmpty {
+                let trends = try await db.costPerDayByRepo(days: 7, repos: cwds, now: now)
+                repos = repos.map { r in
+                    var copy = r
+                    copy.spend7d = r.fullCwd.flatMap { trends[$0] } ?? r.spend7d
+                    return copy
+                }
+            }
+
+            snapshotContinuation?.yield(.init(
+                today: totals,
+                topRepos: repos,
+                topTools: tools,
+                cacheHitRate: cache,
+                weekSpend: weekSpend
+            ))
         } catch {
             // Silent: next publish tick will retry.
         }

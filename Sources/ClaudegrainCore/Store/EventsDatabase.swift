@@ -69,6 +69,27 @@ public actor EventsDatabase {
                 t.column("updated_at", .datetime).notNull()
             }
         }
+        // v2: cross-file dedup. Same assistant turn appears in parent transcript +
+        // any forked sidechain jsonl, so the v1 (source_file, source_offset) unique
+        // index let duplicates through. dedup_key = "<message.id>|<requestId>".
+        // Partial unique index — NULL keys (legacy events) stay tolerated.
+        migrator.registerMigration("v2-dedup-key") { db in
+            try db.execute(sql: "ALTER TABLE events ADD COLUMN dedup_key TEXT")
+            try db.execute(sql: """
+                CREATE UNIQUE INDEX IF NOT EXISTS uq_events_dedup
+                ON events(dedup_key) WHERE dedup_key IS NOT NULL
+            """)
+        }
+        // v3: collapse rows already double-counted under v1. Keep min(id) per dedup key.
+        migrator.registerMigration("v3-purge-duplicates") { db in
+            try db.execute(sql: """
+                DELETE FROM events
+                WHERE dedup_key IS NOT NULL
+                  AND id NOT IN (
+                    SELECT MIN(id) FROM events WHERE dedup_key IS NOT NULL GROUP BY dedup_key
+                  )
+            """)
+        }
         try migrator.migrate(pool)
     }
 
@@ -89,8 +110,8 @@ public actor EventsDatabase {
                     INSERT OR IGNORE INTO events
                     (ts, session_id, cwd, git_branch, model, primary_tool, mcp_server,
                      in_tok, out_tok, cache_create_tok, cache_read_tok, cost_usd,
-                     source_file, source_offset)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     source_file, source_offset, dedup_key)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     arguments: [
                         event.timestamp,
@@ -107,6 +128,7 @@ public actor EventsDatabase {
                         cost,
                         sourceFile,
                         Int64(runningOffset),
+                        event.dedupKey,
                     ]
                 )
                 runningOffset += 1
@@ -210,8 +232,10 @@ public actor EventsDatabase {
                 """,
                 arguments: [start, end, limit]
             ).map { row in
-                RepoBreakdown(
-                    repo: shortRepoName(row["cwd"]),
+                let cwd: String = row["cwd"]
+                return RepoBreakdown(
+                    repo: shortRepoName(cwd),
+                    fullCwd: cwd,
                     costUSD: row["cost"],
                     totalTokens: Int(row["toks"] as Int64? ?? 0)
                 )
@@ -290,6 +314,75 @@ public actor EventsDatabase {
         try pool.write { db in
             try db.execute(sql: "DELETE FROM events WHERE ts < ?", arguments: [cutoff])
         }
+    }
+
+    /// 7-day daily spend totals (USD) ending at `now`. Returns 7 values, oldest → newest.
+    public func costPerDay(days: Int = 7, now: Date = .now, calendar: Calendar = .current) throws -> [Double] {
+        var result = [Double](repeating: 0, count: days)
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!
+        let start = calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now))!
+        try pool.read { db in
+            let rows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT date(ts, 'localtime') AS d, COALESCE(SUM(cost_usd), 0) AS cost
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                GROUP BY d
+                """,
+                arguments: [start, endOfToday]
+            )
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.calendar = calendar
+            formatter.timeZone = calendar.timeZone
+            for row in rows {
+                guard let day: String = row["d"], let date = formatter.date(from: day) else { continue }
+                let dayStart = calendar.startOfDay(for: date)
+                let idx = calendar.dateComponents([.day], from: start, to: dayStart).day ?? 0
+                if idx >= 0 && idx < days {
+                    result[idx] = row["cost"] as? Double ?? 0
+                }
+            }
+        }
+        return result
+    }
+
+    /// Per-repo daily spend totals (USD) for last `days` days. Returns map of cwd → 7 values.
+    /// Filtered to a candidate set of repos so the result fits a UI list (top 5 etc.).
+    public func costPerDayByRepo(days: Int = 7, repos: [String], now: Date = .now, calendar: Calendar = .current) throws -> [String: [Double]] {
+        guard !repos.isEmpty else { return [:] }
+        var output: [String: [Double]] = Dictionary(uniqueKeysWithValues: repos.map { ($0, [Double](repeating: 0, count: days)) })
+        let endOfToday = calendar.date(byAdding: .day, value: 1, to: calendar.startOfDay(for: now))!
+        let start = calendar.date(byAdding: .day, value: -(days - 1), to: calendar.startOfDay(for: now))!
+
+        try pool.read { db in
+            let placeholders = repos.map { _ in "?" }.joined(separator: ",")
+            let sql = """
+            SELECT cwd, date(ts, 'localtime') AS d, COALESCE(SUM(cost_usd), 0) AS cost
+            FROM events
+            WHERE ts >= ? AND ts < ? AND cwd IN (\(placeholders))
+            GROUP BY cwd, d
+            """
+            var args: [DatabaseValueConvertible] = [start, endOfToday]
+            args.append(contentsOf: repos.map { $0 as DatabaseValueConvertible })
+            let rows = try Row.fetchAll(db, sql: sql, arguments: StatementArguments(args))
+            let formatter = DateFormatter()
+            formatter.dateFormat = "yyyy-MM-dd"
+            formatter.calendar = calendar
+            formatter.timeZone = calendar.timeZone
+            for row in rows {
+                guard let cwd: String = row["cwd"],
+                      let day: String = row["d"],
+                      let date = formatter.date(from: day) else { continue }
+                let dayStart = calendar.startOfDay(for: date)
+                let idx = calendar.dateComponents([.day], from: start, to: dayStart).day ?? 0
+                if idx >= 0 && idx < days {
+                    output[cwd]?[idx] = row["cost"] as? Double ?? 0
+                }
+            }
+        }
+        return output
     }
 
     // MARK: - Helpers

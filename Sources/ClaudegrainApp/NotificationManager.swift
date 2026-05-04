@@ -21,6 +21,8 @@ final class NotificationManager {
     private var lastFiredBySessionStart: [Date: Set<NotificationKind>] = [:]
     private var weeklyResetFired: [Date: Set<NotificationKind>] = [:]
     private var blockResetFiredFor: Date?
+    private var burnRateFiredFor: Date?
+    private var repoOverspendFired: Set<RepoOverspendKey> = []
     private var authRequested = false
 
     init(prefs: Preferences? = nil, handler: Handler? = nil) {
@@ -51,16 +53,59 @@ final class NotificationManager {
         }
     }
 
-    /// Stub for v0.2 burn-rate computation (toggle `b`).
-    func noteBurnRate(tokensPerMinute: Double) {
-        guard prefs.notifyBurnRate else { return }
-        // TODO: implement burn-rate logic in task >9.
+    /// Wired by `AppCoordinator` after each ingest snapshot so we can react to
+    /// repo-level activity and burn-rate spikes against jsonl-derived state.
+    func evaluateUsage(
+        session: SessionBlockSnapshot?,
+        weekly: WeeklyUsageSnapshot?,
+        topRepos: [RepoBreakdown]
+    ) {
+        evaluate(session: session, weekly: weekly)
+
+        if prefs.notifyBurnRate, let session {
+            checkBurnRate(session)
+        }
+        if prefs.notifyRepoOverspend {
+            checkRepoOverspend(topRepos)
+        }
     }
 
-    /// Stub for v0.2 repo-overspend check (toggle `d`).
-    func noteRepoOverspend(repo: String, costUSD: Double) {
-        guard prefs.notifyRepoOverspend else { return }
-        // TODO: implement in task >9.
+    private func checkBurnRate(_ s: SessionBlockSnapshot) {
+        // Heuristic: at any point after the first 30 minutes of a 5h block, if
+        // we're already past 2× the linear pace required to hit 100% by reset,
+        // user is burning hot enough to exhaust the block early.
+        let elapsed = -s.startedAt.timeIntervalSinceNow
+        guard elapsed > 30 * 60 else { return }
+        let blockSeconds = s.resetsAt.timeIntervalSince(s.startedAt)
+        guard blockSeconds > 0 else { return }
+        let expectedFraction = elapsed / blockSeconds   // pace == 100% at reset
+        let pacing = s.usedFraction / expectedFraction  // 1.0 = on pace
+        guard pacing >= 2.0 else {
+            burnRateFiredFor = nil
+            return
+        }
+        guard burnRateFiredFor != s.startedAt else { return }
+        let etaMinutes = Int((blockSeconds - elapsed) * (1 - s.usedFraction) / max(s.usedFraction, 0.001) / 60)
+        fire(.burnRate, title: "Claude burn rate spiking",
+             body: "At \(Int((pacing * 100).rounded()))% of expected pace · ETA hit limit ~\(etaMinutes) min")
+        burnRateFiredFor = s.startedAt
+    }
+
+    private func checkRepoOverspend(_ topRepos: [RepoBreakdown]) {
+        let threshold = prefs.repoOverspendThresholdUSD
+        for repo in topRepos.prefix(5) where repo.costUSD >= threshold {
+            let key = RepoOverspendKey(date: Calendar.current.startOfDay(for: Date()), repo: repo.id)
+            guard !repoOverspendFired.contains(key) else { continue }
+            fire(.repoOverspend,
+                 title: "Repo over budget · \(repo.repo)",
+                 body: "Today $\(String(format: "%.2f", repo.costUSD)) ≥ threshold $\(String(format: "%.2f", threshold))")
+            repoOverspendFired.insert(key)
+        }
+    }
+
+    private struct RepoOverspendKey: Hashable {
+        let date: Date
+        let repo: String
     }
 
     private func checkSession(_ s: SessionBlockSnapshot) {

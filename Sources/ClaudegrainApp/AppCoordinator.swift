@@ -22,6 +22,12 @@ final class AppCoordinator {
     }
 
     func start() async {
+        // Apply the last-good LiteLLM price catalog (if any) before we cost
+        // any events. Remote refresh runs in parallel — fresh prices land
+        // on the next ingest tick.
+        await PriceTableLoader.shared.applyDiskCache()
+        Task { await PriceTableLoader.shared.refresh() }
+
         let snapshotStream = await ingest.startStream()
         let dataSourceStream = await dataSource.start()
 
@@ -51,11 +57,23 @@ final class AppCoordinator {
         await dataSource.stop()
     }
 
+    /// User-initiated refresh (F5). Re-scans recent JSONL and pings the OAuth path.
+    func refreshNow() async {
+        await ingest.refreshNow()
+        await dataSource.refreshNow()
+    }
+
     private func applyIngestSnapshot(_ snapshot: IngestActor.Snapshot) {
         model.todayTotals = snapshot.today
         model.topRepos = snapshot.topRepos
         model.topTools = snapshot.topTools
         model.cacheHitRate = snapshot.cacheHitRate
+        model.weekSpend = snapshot.weekSpend
+        notifications.evaluateUsage(
+            session: model.sessionBlock,
+            weekly: model.weekly,
+            topRepos: snapshot.topRepos
+        )
     }
 
     private func applyDataSourceSnapshot(_ snapshot: DataSourceCoordinator.Snapshot) {

@@ -95,4 +95,25 @@ final class EventsDatabaseTests: XCTestCase {
         let totals = try await db.dailyTotals(on: Date())
         XCTAssertEqual(totals.totalTokens, 30, "second insert at same (file, offset) should be ignored")
     }
+
+    /// Same logical assistant turn replayed in two distinct jsonl files
+    /// (parent + sidechain). With a real `dedup_key` the second one is skipped.
+    func testDedupAcrossSourceFiles() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let event = UsageEvent(
+            timestamp: Date(), sessionId: "s",
+            cwd: "/x", gitBranch: nil,
+            model: "claude-sonnet-4-6",
+            tools: ["Bash"],
+            inputTokens: 100, outputTokens: 200, cacheCreationTokens: 0, cacheReadTokens: 0,
+            messageId: "msg_abc", requestId: "req_123"
+        )
+        let cursorA = JSONLReader.Cursor(offset: 50, inode: 1, deviceId: 1, sizeAtLastRead: 50)
+        let cursorB = JSONLReader.Cursor(offset: 80, inode: 2, deviceId: 1, sizeAtLastRead: 80)
+        try await db.insertEvents([event], from: "/tmp/parent.jsonl", startingAt: 0, cursor: cursorA)
+        try await db.insertEvents([event], from: "/tmp/sidechain.jsonl", startingAt: 0, cursor: cursorB)
+
+        let totals = try await db.dailyTotals(on: Date())
+        XCTAssertEqual(totals.totalTokens, 300, "duplicate dedup_key across files must be ignored")
+    }
 }

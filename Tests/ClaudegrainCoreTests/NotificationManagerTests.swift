@@ -103,6 +103,58 @@ final class NotificationManagerTests: XCTestCase {
         XCTAssertEqual(fired, [.blockResetSoon], "no refire for same block")
     }
 
+    func testBurnRateFiresAtTwiceExpectedPace() {
+        let (_, prefs) = makePrefs()
+        prefs.notifyBurnRate = true
+        var fired: [NotificationKind] = []
+        let mgr = NotificationManager(prefs: prefs) { kind, _, _ in fired.append(kind) }
+
+        // 60 min into a 5h block (20% elapsed), used 50% → 2.5× pace.
+        let started = Date().addingTimeInterval(-60 * 60)
+        let resets = started.addingTimeInterval(5 * 3600)
+        let s = SessionBlockSnapshot(startedAt: started, resetsAt: resets, usedFraction: 0.5, totalTokens: 0)
+        mgr.evaluateUsage(session: s, weekly: nil, topRepos: [])
+        XCTAssertEqual(fired, [.burnRate])
+
+        // No refire while still hot.
+        mgr.evaluateUsage(session: s, weekly: nil, topRepos: [])
+        XCTAssertEqual(fired, [.burnRate])
+    }
+
+    func testBurnRateNoFireOnPace() {
+        let (_, prefs) = makePrefs()
+        prefs.notifyBurnRate = true
+        var fired: [NotificationKind] = []
+        let mgr = NotificationManager(prefs: prefs) { kind, _, _ in fired.append(kind) }
+
+        // 60 min into 5h, 22% used → only 1.1× pace, no fire.
+        let started = Date().addingTimeInterval(-60 * 60)
+        let resets = started.addingTimeInterval(5 * 3600)
+        let s = SessionBlockSnapshot(startedAt: started, resetsAt: resets, usedFraction: 0.22, totalTokens: 0)
+        mgr.evaluateUsage(session: s, weekly: nil, topRepos: [])
+        XCTAssertTrue(fired.isEmpty)
+    }
+
+    func testRepoOverspendFiresPerRepoPerDay() {
+        let (_, prefs) = makePrefs()
+        prefs.notifyRepoOverspend = true
+        prefs.repoOverspendThresholdUSD = 5.0
+        var fired: [(NotificationKind, String)] = []
+        let mgr = NotificationManager(prefs: prefs) { kind, title, _ in fired.append((kind, title)) }
+
+        let repos = [
+            RepoBreakdown(repo: "a", fullCwd: "/a", costUSD: 6.0, totalTokens: 0),
+            RepoBreakdown(repo: "b", fullCwd: "/b", costUSD: 3.0, totalTokens: 0),
+        ]
+        mgr.evaluateUsage(session: nil, weekly: nil, topRepos: repos)
+        XCTAssertEqual(fired.count, 1)
+        XCTAssertTrue(fired[0].1.contains("a"))
+
+        // Re-evaluate: should not refire same repo same day.
+        mgr.evaluateUsage(session: nil, weekly: nil, topRepos: repos)
+        XCTAssertEqual(fired.count, 1)
+    }
+
     func testPreferencesPersistAcrossInstances() {
         let suite = "claudegrain.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

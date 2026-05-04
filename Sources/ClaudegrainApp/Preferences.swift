@@ -21,6 +21,7 @@ final class Preferences: ObservableObject {
         static let notifyBurnRate = "notifyBurnRate"
         static let notifyBlockReset = "notifyBlockReset"
         static let notifyRepoOverspend = "notifyRepoOverspend"
+        static let repoOverspendThresholdUSD = "repoOverspendThresholdUSD"
         static let primaryMetric = "primaryMetric"
         static let notificationSound = "notificationSound"
     }
@@ -36,8 +37,17 @@ final class Preferences: ObservableObject {
             Key.notifyBurnRate: false,
             Key.notifyBlockReset: false,
             Key.notifyRepoOverspend: false,
+            Key.repoOverspendThresholdUSD: 10.0,
             Key.primaryMetric: PrimaryMetric.sessionPercent.rawValue,
         ])
+    }
+
+    var repoOverspendThresholdUSD: Double {
+        get { defaults.double(forKey: Key.repoOverspendThresholdUSD) }
+        set {
+            defaults.set(newValue, forKey: Key.repoOverspendThresholdUSD)
+            objectWillChange.send()
+        }
     }
 
     @Published var notifyThresholdCache: Bool = true
