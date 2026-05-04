@@ -1,0 +1,16 @@
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+.DS_Store
+build/
+release/
+dist/
+*.dmg
+.gstack/
+Package.resolved
+
+# scratch screenshots from design iteration
+v*.png
+/tmp/

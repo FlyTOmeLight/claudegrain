@@ -1,0 +1,97 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-14
+    timeout-minutes: 45
+    env:
+      DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
+      BUNDLE_ID: dev.claudegrain.menubar
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Show toolchain
+        run: |
+          sw_vers
+          xcodebuild -version
+          swift --version
+
+      - name: Install create-dmg
+        run: brew install create-dmg
+
+      - name: Import Developer ID certificate
+        env:
+          CERT_P12_BASE64: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }}
+          CERT_PASSWORD: ${{ secrets.DEVELOPER_ID_CERT_PASSWORD }}
+        run: |
+          set -euo pipefail
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain"
+          KEYCHAIN_PASSWORD="$(uuidgen)"
+          CERT_PATH="$RUNNER_TEMP/cert.p12"
+          printf '%s' "$CERT_P12_BASE64" | base64 --decode > "$CERT_PATH"
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security import "$CERT_PATH" -P "$CERT_PASSWORD" -A -t cert -f pkcs12 -k "$KEYCHAIN_PATH"
+          security list-keychain -d user -s "$KEYCHAIN_PATH" $(security list-keychains -d user | tr -d '"')
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          IDENTITY="$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" | awk -F'"' '/Developer ID Application/ {print $2; exit}')"
+          if [ -z "$IDENTITY" ]; then
+            echo "No Developer ID Application identity found in keychain" >&2
+            exit 1
+          fi
+          echo "DEVELOPER_ID=$IDENTITY" >> "$GITHUB_ENV"
+          rm -f "$CERT_PATH"
+
+      - name: Stage notary API key
+        env:
+          NOTARY_KEY_BASE64: ${{ secrets.NOTARY_API_KEY_PRIVATE_KEY_BASE64 }}
+          NOTARY_KEY_ID: ${{ secrets.NOTARY_API_KEY_ID }}
+          NOTARY_ISSUER_ID: ${{ secrets.NOTARY_API_KEY_ISSUER_ID }}
+        run: |
+          set -euo pipefail
+          KEY_PATH="$RUNNER_TEMP/notary_key.p8"
+          printf '%s' "$NOTARY_KEY_BASE64" | base64 --decode > "$KEY_PATH"
+          xcrun notarytool store-credentials claudegrain-notary \
+            --key "$KEY_PATH" \
+            --key-id "$NOTARY_KEY_ID" \
+            --issuer "$NOTARY_ISSUER_ID"
+          echo "NOTARY_PROFILE=claudegrain-notary" >> "$GITHUB_ENV"
+          rm -f "$KEY_PATH"
+
+      - name: Build DMG
+        run: ./scripts/build-dmg.sh
+
+      - name: Compute artifact path
+        id: artifact
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '[:space:]' < VERSION)"
+          DMG="dist/claudegrain-${VERSION}.dmg"
+          test -f "$DMG"
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "dmg=$DMG" >> "$GITHUB_OUTPUT"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: claudegrain-${{ steps.artifact.outputs.version }}-dmg
+          path: ${{ steps.artifact.outputs.dmg }}
+          if-no-files-found: error
+
+      - name: Publish GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.artifact.outputs.dmg }}
+          fail_on_unmatched_files: true
+          generate_release_notes: true
