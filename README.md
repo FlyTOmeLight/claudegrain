@@ -34,20 +34,37 @@ See [docs/adr/0001-three-tier-data-source.md](docs/adr/0001-three-tier-data-sour
 
 ## Install
 
-(v0.1 work in progress — DMG + Homebrew Cask coming.)
+Grab the latest DMG from [GitHub Releases](https://github.com/Artzainnn/claudegrain/releases/latest).
 
-```bash
-git clone https://github.com/<your>/claudegrain
-cd claudegrain
-swift build -c release
-.build/release/claudegrain
-```
+> **First launch — Gatekeeper hoop**
+>
+> The current builds are **ad-hoc signed** (we haven't paid for an Apple
+> Developer ID yet). macOS will refuse to open the app on first launch.
+>
+> 1. Drag **claudegrain.app** into `/Applications/`
+> 2. Right-click the app → **Open** → confirm
+> 3. Subsequent launches open normally
+>
+> Or via Terminal:
+> ```sh
+> xattr -dr com.apple.quarantine /Applications/claudegrain.app
+> open /Applications/claudegrain.app
+> ```
 
 Requires macOS 14+ (Sonoma). Apple Silicon and Intel both supported.
 
-The signed `.app` ships with bundle id `dev.claudegrain.menubar` (override via
-`BUNDLE_ID=...` when invoking `scripts/build-dmg.sh`). See
-[`scripts/README.md`](scripts/README.md) for the full release pipeline.
+### Build from source
+
+```bash
+git clone https://github.com/Artzainnn/claudegrain
+cd claudegrain
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  bash scripts/build-dmg.sh
+open dist/claudegrain.app
+```
+
+Bundle id is `dev.claudegrain.menubar` (override via `BUNDLE_ID=...`).
+See [`scripts/README.md`](scripts/README.md).
 
 ## Privacy
 

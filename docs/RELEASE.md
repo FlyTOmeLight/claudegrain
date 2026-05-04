@@ -1,89 +1,117 @@
-# Release Playbook — v0.1.0
+# Release Playbook
 
-End-to-end checklist for cutting a public release.
+Two paths. Pick whichever matches the project's stage.
 
-## 0. Prereqs
+| Path | Cost | Gatekeeper UX | Use when |
+| --- | --- | --- | --- |
+| **A · ad-hoc** (current) | $0 | First launch needs right-click → Open | Early days, open-source crowd, GitHub Releases |
+| **B · Developer ID + notarize** | $99/y | Double-click opens silently | Mass distribution, brew cask, less-technical users |
+
+## Path A — ad-hoc release (free)
+
+This is what the repo ships today.
+
+### One-time
+
+Nothing.
+
+### Cut a release
+
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+That's it. `.github/workflows/release.yml` runs `scripts/build-dmg.sh` (which
+falls back to ad-hoc signing when `DEVELOPER_ID` is unset), uploads the DMG,
+and publishes a GitHub Release with first-launch instructions in the body.
+
+### Verify locally before tagging
+
+```bash
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+  bash scripts/build-dmg.sh
+hdiutil verify dist/claudegrain-0.1.0.dmg
+open dist/claudegrain.app    # Right-click → Open the first time
+```
+
+### Caveats
+
+- Users see a Gatekeeper warning on first launch. README covers the
+  workaround.
+- Homebrew Cask review tends to reject ad-hoc-signed casks. Stay self-hosted
+  on GitHub Releases until upgrading to path B.
+
+## Path B — notarized release ($99/y Apple Developer Program)
+
+### Prereqs
 
 - Apple Developer Program account (paid, $99/y)
 - Developer ID Application certificate enrolled in your local Keychain
 - App Store Connect API key (issuer ID + key ID + .p8 private key)
-- GitHub repo created (e.g. `claudegrain/claudegrain` or `Artzainnn/claudegrain`)
 
-## 1. Configure local notarization
+### One-time local setup
 
 ```bash
-# one-time: store credentials in keychain so notarytool can use them
 xcrun notarytool store-credentials "claudegrain-notary" \
   --apple-id "you@example.com" \
   --team-id "ABCDEFGHIJ" \
   --password "app-specific-password"
 ```
 
-## 2. Local release build (test before pushing tag)
+### One-time GitHub repo secrets
 
-```bash
-DEVELOPER_ID="Developer ID Application: Your Name (ABCDEFGHIJ)" \
-NOTARY_PROFILE="claudegrain-notary" \
-DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
-bash scripts/build-dmg.sh
-```
-
-Verify:
-```bash
-spctl -a -t exec -vv dist/claudegrain.app
-xcrun stapler validate dist/claudegrain.app
-hdiutil verify dist/claudegrain-0.1.0.dmg
-```
-
-Expect `accepted source=Notarized Developer ID` and stapler `100% valid`.
-
-## 3. Configure GitHub repo secrets
-
-Settings → Secrets and variables → Actions → New repository secret:
+Settings → Secrets and variables → Actions:
 
 | Secret | Value |
 | --- | --- |
-| `DEVELOPER_ID_CERT_P12_BASE64` | base64 of the Developer ID `.p12` |
-| `DEVELOPER_ID_CERT_PASSWORD` | password protecting the `.p12` |
-| `DEVELOPER_ID` | identity string, e.g. `Developer ID Application: Your Name (TEAMID)` |
+| `DEVELOPER_ID_CERT_P12_BASE64` | base64 of your Developer ID `.p12` |
+| `DEVELOPER_ID_CERT_PASSWORD` | password protecting that `.p12` |
 | `NOTARY_API_KEY_ID` | App Store Connect key ID |
 | `NOTARY_API_KEY_ISSUER_ID` | issuer UUID |
-| `NOTARY_API_KEY_PRIVATE_KEY_BASE64` | base64 of `.p8` private key |
+| `NOTARY_API_KEY_PRIVATE_KEY_BASE64` | base64 of the `.p8` private key |
 
-Encode the .p12 / .p8 files:
+Encode helpers:
 ```bash
-base64 -i Certificates.p12 | pbcopy        # paste into DEVELOPER_ID_CERT_P12_BASE64
-base64 -i AuthKey_XXXXXXXXX.p8 | pbcopy    # paste into NOTARY_API_KEY_PRIVATE_KEY_BASE64
+base64 -i Certificates.p12 | pbcopy
+base64 -i AuthKey_XXXXXXXXX.p8 | pbcopy
 ```
 
-## 4. Tag & push
+### Switch the workflow to path B
 
-```bash
-git tag v0.1.0
-git push origin main --follow-tags
+Restore the certificate import + notarytool steps in
+`.github/workflows/release.yml`. Reference: the git history before path A
+was the live notarized version. Pseudo-diff:
+
+```yaml
+# add steps before "Build DMG":
+- name: Import Developer ID certificate
+  env: { CERT_P12_BASE64: ${{ secrets.DEVELOPER_ID_CERT_P12_BASE64 }} ... }
+  run: |
+    # security create-keychain / import / set-key-partition-list
+    # echo "DEVELOPER_ID=$IDENTITY" >> $GITHUB_ENV
+
+- name: Stage notary API key
+  env: { NOTARY_KEY_BASE64: ${{ secrets.NOTARY_API_KEY_PRIVATE_KEY_BASE64 }} ... }
+  run: |
+    # base64 --decode > notary_key.p8
+    # xcrun notarytool store-credentials claudegrain-notary --key ...
+    # echo "NOTARY_PROFILE=claudegrain-notary" >> $GITHUB_ENV
 ```
 
-GitHub Actions release.yml runs on the `v*` tag, builds the DMG with full
-Developer ID signing + notarization + stapling, then creates a Release with
-the DMG attached.
+### Verify the notarized DMG
 
-## 5. Verify the published Release
+```bash
+spctl -a -t exec -vv dist/claudegrain.app   # expect: source=Notarized Developer ID
+xcrun stapler validate dist/claudegrain.app  # expect: 100% valid
+```
 
-- Download the DMG from the Releases page
-- Mount it on a separate Mac that has never seen this app
-- Drag claudegrain.app to /Applications/
-- Right-click → Open (first launch) — Gatekeeper should accept silently
-- Confirm the menu bar icon shows up after a few seconds
-- Open Settings (Cmd+,) → toggle "Open at login" off then on
-- Verify OAuth path: Settings should show "OAuth ✓" data source
+### Cut a release (same as path A)
 
-## 6. Post-release
-
-- Submit to Homebrew Cask: open a PR against
-  `Homebrew/homebrew-cask` with a `claudegrain.rb` cask file pointing at the
-  GitHub Releases DMG URL
-- Tweet / Show HN announcing the release
-- Tag next milestone in CHANGELOG (Unreleased section)
+```bash
+git tag v0.2.0
+git push origin v0.2.0
+```
 
 ## Rollback
 
@@ -95,4 +123,4 @@ git tag -d v0.1.0
 git push origin :refs/tags/v0.1.0
 ```
 
-Then fix, bump VERSION, re-tag.
+Fix, bump VERSION, re-tag.
