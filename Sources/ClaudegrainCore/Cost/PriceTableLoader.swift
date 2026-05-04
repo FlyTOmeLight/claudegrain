@@ -12,6 +12,7 @@ public actor PriceTableLoader {
     private let cacheURL: URL
     private let session: URLSession
     private let remote: URL
+    private var refreshTask: Task<Void, Never>?
 
     public init(
         cacheURL: URL? = nil,
@@ -55,6 +56,39 @@ public actor PriceTableLoader {
     public func bootstrap() async {
         applyDiskCache()
         await refresh()
+    }
+
+    /// Start a long-running task that re-fetches the catalog every `interval`.
+    /// Idempotent — calling twice replaces the prior task.
+    /// Default 24h: LiteLLM updates land on the order of weeks; 24h is plenty
+    /// fresh and avoids hammering GitHub raw for a long-lived menu bar app.
+    public func startPeriodicRefresh(interval: TimeInterval = 24 * 3600) {
+        refreshTask?.cancel()
+        refreshTask = Task { [weak self] in
+            // Skip the first sleep if the cache file is already older than `interval` —
+            // covers the "laptop slept for a week" case so users see fresh prices fast.
+            if await self?.cacheIsStale(threshold: interval) == true {
+                await self?.refresh()
+            }
+            while !Task.isCancelled {
+                try? await Task.sleep(nanoseconds: UInt64(interval * 1_000_000_000))
+                if Task.isCancelled { break }
+                await self?.refresh()
+            }
+        }
+    }
+
+    public func stopPeriodicRefresh() {
+        refreshTask?.cancel()
+        refreshTask = nil
+    }
+
+    private func cacheIsStale(threshold: TimeInterval) -> Bool {
+        guard let attrs = try? FileManager.default.attributesOfItem(atPath: cacheURL.path),
+              let mtime = attrs[.modificationDate] as? Date else {
+            return true   // no cache yet → treat as stale
+        }
+        return Date().timeIntervalSince(mtime) >= threshold
     }
 
     private func loadFromDisk() -> [String: ModelPricing]? {

@@ -23,10 +23,9 @@ final class AppCoordinator {
 
     func start() async {
         // Apply the last-good LiteLLM price catalog (if any) before we cost
-        // any events. Remote refresh runs in parallel — fresh prices land
-        // on the next ingest tick.
+        // any events, then kick off a daily background refresh.
         await PriceTableLoader.shared.applyDiskCache()
-        Task { await PriceTableLoader.shared.refresh() }
+        await PriceTableLoader.shared.startPeriodicRefresh()
 
         let snapshotStream = await ingest.startStream()
         let dataSourceStream = await dataSource.start()
@@ -55,6 +54,7 @@ final class AppCoordinator {
         dataSourceTask?.cancel()
         await ingest.stop()
         await dataSource.stop()
+        await PriceTableLoader.shared.stopPeriodicRefresh()
     }
 
     /// User-initiated refresh (F5). Re-scans recent JSONL and pings the OAuth path.

@@ -385,7 +385,6 @@ private struct NetTotalRow: View {
 
 private struct FooterBlock: View {
     @Environment(\.theme) private var theme
-    @Environment(\.openSettings) private var openSettings
     @EnvironmentObject private var model: AppModel
 
     var body: some View {
@@ -428,7 +427,10 @@ private struct FooterBlock: View {
         // LSUIElement = true ⇒ default policy is .accessory; activate explicitly
         // so the Settings scene window comes forward and accepts focus.
         NSApp.activate(ignoringOtherApps: true)
-        openSettings()
+        // `\.openSettings` exists in newer SDKs but the CI Xcode 15 SDK is
+        // missing the symbol. Selector dispatch hits the same AppKit hook
+        // that SwiftUI's accessor uses internally and works on macOS 13+.
+        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
     }
 
     private func triggerRefresh() {
