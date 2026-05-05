@@ -51,6 +51,31 @@ Initial public release.
 - Per-row 7d sparkline data is currently mocked client-side; live wiring to
   `EventsDatabase.tokensSince` ships in 0.2
 
+## [0.1.4-rc1] — 2026-05-05
+
+Phase 1 of v0.2 — core data layer. UI surfaces unchanged; the new
+fields are populated but not yet rendered.
+
+### Added
+- `ModelFamily` enum (Opus/Sonnet/Haiku/unknown) + `UsageEvent.modelFamily`
+- `EventsDatabase.costPerModel` and `tokensPerModel` aggregations
+- `EventsDatabase.costPerBucket(start:span:bucketSize:)` for forecast input
+- `EventsDatabase.costInWindow` and `cacheHitRateInWindow` for week deltas
+- `Forecaster` actor with EWMA (α=0.4) and linear-fallback branches
+  (ADR-0005)
+- `WeekDelta` value type with Monday-UTC week boundaries (B3)
+- `AppCoordinator.refreshDerivedNow()` ties Forecaster + ModelMix +
+  WeekDelta to `AppModel`'s new published fields
+
+### Changed
+- Burn-rate notification (toggle b) is now gated by `Forecaster`'s
+  `willHit` + confidence ≥ medium. The legacy `>2× linear pace` rule
+  is removed (ADR-0005).
+
+### Docs
+- ADR-0005 — forecast EWMA decision
+- ADR-0006 — model family grouped in Swift, not SQL
+
 ## [0.1.3] — 2026-05-05
 
 ### Added
