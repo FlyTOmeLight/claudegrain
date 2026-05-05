@@ -10,12 +10,21 @@ final class AppCoordinator {
     private let ingest: IngestActor
     private let dataSource: DataSourceCoordinator
     private let notifications: NotificationManager
+    private let forecaster = Forecaster()
     private var ingestTask: Task<Void, Never>?
     private var dataSourceTask: Task<Void, Never>?
 
-    init(model: AppModel, notifications: NotificationManager? = nil) throws {
+    init(
+        model: AppModel,
+        notifications: NotificationManager? = nil,
+        dbOverride: EventsDatabase? = nil
+    ) throws {
         self.model = model
-        self.db = try EventsDatabase(url: EventsDatabase.defaultURL)
+        if let dbOverride {
+            self.db = dbOverride
+        } else {
+            self.db = try EventsDatabase(url: EventsDatabase.defaultURL)
+        }
         self.ingest = IngestActor(db: db)
         self.dataSource = DataSourceCoordinator()
         self.notifications = notifications ?? NotificationManager(prefs: model.preferences)
@@ -70,11 +79,44 @@ final class AppCoordinator {
         model.topTools = snapshot.topTools
         model.cacheHitRate = snapshot.cacheHitRate
         model.weekSpend = snapshot.weekSpend
+        Task { [weak self] in await self?.refreshDerivedNow() }
         notifications.evaluateUsage(
             session: model.sessionBlock,
             weekly: model.weekly,
             topRepos: snapshot.topRepos
         )
+    }
+
+    /// Recompute all derived/aggregated fields from the current DB state and
+    /// publish them on `AppModel`. Called on every refresh tick.
+    func refreshDerivedNow() async {
+        let now = Date()
+
+        // 1. Model mix — last 24h.
+        let dayStart = now.addingTimeInterval(-24 * 3600)
+        let costsByFamily = (try? await db.costPerModel(since: dayStart, until: now)) ?? [:]
+        let totalDaily = costsByFamily.values.reduce(0, +)
+        if totalDaily > 0 {
+            model.modelMix = costsByFamily.mapValues { $0 / totalDaily }
+        } else {
+            model.modelMix = [:]
+        }
+
+        // 2. WeekDelta.
+        model.weekDelta = await WeekDelta.compute(db: db, now: now)
+
+        // 3. Forecast block + weekly.
+        let buckets = (try? await db.costPerBucket(
+            start: now.addingTimeInterval(-3600),
+            span:  3600,
+            bucketSize: 5 * 60
+        )) ?? []
+        if let session = model.sessionBlock {
+            model.forecastBlock = await forecaster.forecastSessionBlock(block: session, recent: buckets)
+        }
+        if let weekly = model.weekly {
+            model.forecastWeekly = await forecaster.forecastWeekly(weekly: weekly, recent: buckets)
+        }
     }
 
     private func applyDataSourceSnapshot(_ snapshot: DataSourceCoordinator.Snapshot) {
@@ -93,3 +135,12 @@ final class AppCoordinator {
         notifications.evaluate(session: model.sessionBlock, weekly: model.weekly)
     }
 }
+
+#if DEBUG
+enum AppCoordinatorTestHook {
+    @MainActor
+    static func make(model: AppModel, db: EventsDatabase) throws -> AppCoordinator {
+        try AppCoordinator(model: model, dbOverride: db)
+    }
+}
+#endif
