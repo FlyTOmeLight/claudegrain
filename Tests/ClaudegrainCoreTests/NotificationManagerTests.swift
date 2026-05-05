@@ -201,6 +201,26 @@ final class NotificationManagerTests: XCTestCase {
         XCTAssertTrue(fired.first?.1.contains("/tight") ?? false)
     }
 
+    func testQuietHoursSuppressesAllNotifications() {
+        var fired: [NotificationKind] = []
+        let prefs = Preferences(defaults: UserDefaults(suiteName: "qh-\(UUID().uuidString)")!)
+        prefs.notifyThreshold = true
+        prefs.quietHours = QuietHours(enabled: true,
+                                       startHour: 0, startMinute: 0,
+                                       endHour: 23, endMinute: 59)   // all-day suppress for test
+
+        let mgr = NotificationManager(prefs: prefs) { kind, _, _ in fired.append(kind) }
+        let snap = SessionBlockSnapshot(
+            startedAt: Date().addingTimeInterval(-1800),
+            resetsAt:  Date().addingTimeInterval(16_200),
+            usedFraction: 0.95,
+            totalTokens: 1
+        )
+        mgr.evaluate(session: snap, weekly: nil)
+
+        XCTAssertTrue(fired.isEmpty, "quiet hours should suppress threshold notification")
+    }
+
     func testPreferencesPersistAcrossInstances() {
         let suite = "claudegrain.tests.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!

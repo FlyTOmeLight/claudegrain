@@ -146,7 +146,12 @@ final class NotificationManager {
     }
 
     private func fire(_ kind: NotificationKind, title: String, body: String) {
+        guard shouldDeliver(now: Date()) else { return }
         handler(kind, title, body)
+    }
+
+    private func shouldDeliver(now: Date) -> Bool {
+        !prefs.quietHours.contains(now)
     }
 
     private func ensureAuthorization() {
