@@ -152,7 +152,7 @@ func costPerBucket(start: Date, span: TimeInterval, bucketSize: TimeInterval) ->
 
 `AppCoordinator` runs the forecaster on every refresh tick and publishes `AppModel.forecast: ForecastSnapshot`.
 
-The existing burn-rate notification (>2× linear pace) is **upgraded** to use the forecaster's prediction. The old trigger remains as a fallback if `Forecaster` returns `.insufficient`.
+The existing burn-rate notification (>2× linear pace) is **replaced** by the forecaster's prediction. Notifications fire only when `willHit == true` AND `confidence >= .medium`; below that threshold the notification is held back to avoid false positives during cold-start or sparse activity. The old `>2× linear pace` rule is removed — `Forecaster`'s `.linear` basis already covers the same case with explicit confidence reporting.
 
 UI: hero-row subtitle `⏱ block hits in ~1h12m · medium` or `✓ won't hit`.
 
@@ -279,7 +279,8 @@ final class IngestPauseController: ObservableObject {
 
 Effects when paused:
 - `FileWatcher` stopped, `IngestActor` quiesced. Resume runs a catch-up scan via existing cursor logic — no event loss.
-- `DataSourceCoordinator.pauseOAuthPolling()` — coordinator stays in `oauthLive` snapshot but stops polling.
+- `DataSourceCoordinator` receives the existing `user toggle off` transition from ADR-0004 (moves it to `jsonlOnly`, OAuth polling halted). On resume the coordinator re-enters `oauthChecking`.
+- The next `AppGroupStore.write()` tags the snapshot with `dataSource = "paused"` (consumed by widget for the `⏸` corner marker).
 - `MenuBarLabel` status dot changes to `⏸`.
 - Popover gains a top banner `Paused — last updated 12 min ago [Resume]`.
 
@@ -591,7 +592,7 @@ CI changes:
 
 `0.2.0` ships when, on a clean Mac running macOS 14+:
 
-- [ ] All ten subitems are visible / functional from a fresh install
+- [ ] All ten subitems are functional from a fresh install (widget surfaces in the macOS Widget Gallery; onboarding step 4 prompts the user to add it)
 - [ ] `swift test` is green; new test count meets §8 targets
 - [ ] DMG build via `xcodebuild` completes in under 15 min on `macos-14` runner
 - [ ] Three widget sizes render correctly in both Phosphor and Thermal themes
