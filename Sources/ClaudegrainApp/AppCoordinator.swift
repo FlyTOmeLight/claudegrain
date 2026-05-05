@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 import ClaudegrainCore
@@ -19,6 +20,8 @@ final class AppCoordinator {
     /// Exposed so menu / popover entry points can present the export sheet.
     let exporter: EventsExporter
     let budgets: BudgetStore
+    let pauseController: IngestPauseController
+    private var pauseSubscription: AnyCancellable?
     private var exportWindow: NSWindow?
 
     init(
@@ -43,6 +46,7 @@ final class AppCoordinator {
 
         self.notifications = notifications ?? NotificationManager(prefs: model.preferences, budgets: store)
         self.exporter = EventsExporter(db: self.db)
+        self.pauseController = IngestPauseController()
     }
 
     /// Opens the export sheet as a standalone window. LSUIElement = true ⇒ activate
@@ -99,9 +103,26 @@ final class AppCoordinator {
             }
         }
 
+        // Honor pause state changes — halt or resume both ingest and OAuth.
+        pauseSubscription = pauseController.$isPaused
+            .removeDuplicates()
+            .sink { [weak self] paused in
+                Task { [weak self] in
+                    if paused {
+                        await self?.ingest.stop()
+                        await self?.dataSource.stop()
+                    } else {
+                        await self?.ingest.refreshNow()
+                        await self?.dataSource.refreshNow()
+                        await self?.ingest.startWatching()
+                    }
+                }
+            }
+
         // Kick an immediate OAuth + ingest poll so the popover shows real
         // sessionBlock/weekly values without the user having to F5 once at boot.
-        Task { [ingest, dataSource] in
+        Task { [ingest, dataSource, pauseController] in
+            guard !pauseController.isPaused else { return }
             await ingest.refreshNow()
             await dataSource.refreshNow()
         }
