@@ -96,7 +96,7 @@ private struct ReceiptBody: View {
 
             HeroSpend(yesterdayCost: 7.5)
 
-            // NEW: forecast badge for the 5h block (rendered below hero)
+            // Forecast badge — kept in both modes; tiny, hero-adjacent.
             if model.forecastBlock?.basis != .insufficient {
                 ForecastBadge(forecast: model.forecastBlock, labelKey: .forecastBlockHits)
                     .padding(.top, 2)
@@ -104,9 +104,11 @@ private struct ReceiptBody: View {
 
             DashedDivider()
 
-            // NEW: week delta row (B3)
-            WeekDeltaRow(delta: model.weekDelta)
-            DashedDivider()
+            // WeekDelta — fixed mode skips to fit HD screens (parity with SubtotalsBlock).
+            if model.layoutMode == .scroll {
+                WeekDeltaRow(delta: model.weekDelta)
+                DashedDivider()
+            }
 
             SectionHeader(label: model.t(.sectionUsageLimits))
             VStack(spacing: 2) {
@@ -141,9 +143,11 @@ private struct ReceiptBody: View {
             SectionHeader(label: model.t(.sectionTopCosts))
             TopCostsList()
 
-            // NEW: model mix row (A1)
-            DashedDivider()
-            ModelMixRow(mix: model.modelMix)
+            // ModelMix — fixed mode skips to fit HD screens.
+            if model.layoutMode == .scroll {
+                DashedDivider()
+                ModelMixRow(mix: model.modelMix)
+            }
 
             DoubleDivider()
 
