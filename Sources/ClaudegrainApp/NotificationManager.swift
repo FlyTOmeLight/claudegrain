@@ -62,33 +62,31 @@ final class NotificationManager {
     ) {
         evaluate(session: session, weekly: weekly)
 
-        if prefs.notifyBurnRate, let session {
-            checkBurnRate(session)
-        }
         if prefs.notifyRepoOverspend {
             checkRepoOverspend(topRepos)
         }
     }
 
-    private func checkBurnRate(_ s: SessionBlockSnapshot) {
-        // Heuristic: at any point after the first 30 minutes of a 5h block, if
-        // we're already past 2× the linear pace required to hit 100% by reset,
-        // user is burning hot enough to exhaust the block early.
-        let elapsed = -s.startedAt.timeIntervalSinceNow
-        guard elapsed > 30 * 60 else { return }
-        let blockSeconds = s.resetsAt.timeIntervalSince(s.startedAt)
-        guard blockSeconds > 0 else { return }
-        let expectedFraction = elapsed / blockSeconds   // pace == 100% at reset
-        let pacing = s.usedFraction / expectedFraction  // 1.0 = on pace
-        guard pacing >= 2.0 else {
+    /// Forecaster-gated burn-rate notification. Fires once per session block when
+    /// (willHit == true) AND (confidence >= .medium). Replaces the >2× linear pace
+    /// rule (ADR-0005).
+    func evaluateBurnRate(session: SessionBlockSnapshot?, forecast: ForecastResult?) {
+        guard prefs.notifyBurnRate,
+              let session,
+              let forecast,
+              forecast.willHit,
+              forecast.confidence != .low
+        else {
             burnRateFiredFor = nil
             return
         }
-        guard burnRateFiredFor != s.startedAt else { return }
-        let etaMinutes = Int((blockSeconds - elapsed) * (1 - s.usedFraction) / max(s.usedFraction, 0.001) / 60)
-        fire(.burnRate, title: "Claude burn rate spiking",
-             body: "At \(Int((pacing * 100).rounded()))% of expected pace · ETA hit limit ~\(etaMinutes) min")
-        burnRateFiredFor = s.startedAt
+        guard burnRateFiredFor != session.startedAt else { return }
+        let etaMin = forecast.hitAt.map { Int($0.timeIntervalSinceNow / 60) } ?? -1
+        fire(.burnRate,
+             title: "Claude burn rate spiking",
+             body: "Forecast: hit \(forecast.basis.rawValue.uppercased()) " +
+                   "(\(forecast.confidence.rawValue)) · ETA ~\(etaMin) min")
+        burnRateFiredFor = session.startedAt
     }
 
     private func checkRepoOverspend(_ topRepos: [RepoBreakdown]) {

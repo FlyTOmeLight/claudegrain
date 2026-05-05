@@ -117,6 +117,7 @@ final class AppCoordinator {
         if let weekly = model.weekly {
             model.forecastWeekly = await forecaster.forecastWeekly(weekly: weekly, recent: buckets)
         }
+        notifications.evaluateBurnRate(session: model.sessionBlock, forecast: model.forecastBlock)
     }
 
     private func applyDataSourceSnapshot(_ snapshot: DataSourceCoordinator.Snapshot) {

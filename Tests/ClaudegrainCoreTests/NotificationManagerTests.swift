@@ -103,38 +103,6 @@ final class NotificationManagerTests: XCTestCase {
         XCTAssertEqual(fired, [.blockResetSoon], "no refire for same block")
     }
 
-    func testBurnRateFiresAtTwiceExpectedPace() {
-        let (_, prefs) = makePrefs()
-        prefs.notifyBurnRate = true
-        var fired: [NotificationKind] = []
-        let mgr = NotificationManager(prefs: prefs) { kind, _, _ in fired.append(kind) }
-
-        // 60 min into a 5h block (20% elapsed), used 50% → 2.5× pace.
-        let started = Date().addingTimeInterval(-60 * 60)
-        let resets = started.addingTimeInterval(5 * 3600)
-        let s = SessionBlockSnapshot(startedAt: started, resetsAt: resets, usedFraction: 0.5, totalTokens: 0)
-        mgr.evaluateUsage(session: s, weekly: nil, topRepos: [])
-        XCTAssertEqual(fired, [.burnRate])
-
-        // No refire while still hot.
-        mgr.evaluateUsage(session: s, weekly: nil, topRepos: [])
-        XCTAssertEqual(fired, [.burnRate])
-    }
-
-    func testBurnRateNoFireOnPace() {
-        let (_, prefs) = makePrefs()
-        prefs.notifyBurnRate = true
-        var fired: [NotificationKind] = []
-        let mgr = NotificationManager(prefs: prefs) { kind, _, _ in fired.append(kind) }
-
-        // 60 min into 5h, 22% used → only 1.1× pace, no fire.
-        let started = Date().addingTimeInterval(-60 * 60)
-        let resets = started.addingTimeInterval(5 * 3600)
-        let s = SessionBlockSnapshot(startedAt: started, resetsAt: resets, usedFraction: 0.22, totalTokens: 0)
-        mgr.evaluateUsage(session: s, weekly: nil, topRepos: [])
-        XCTAssertTrue(fired.isEmpty)
-    }
-
     func testRepoOverspendFiresPerRepoPerDay() {
         let (_, prefs) = makePrefs()
         prefs.notifyRepoOverspend = true
@@ -153,6 +121,58 @@ final class NotificationManagerTests: XCTestCase {
         // Re-evaluate: should not refire same repo same day.
         mgr.evaluateUsage(session: nil, weekly: nil, topRepos: repos)
         XCTAssertEqual(fired.count, 1)
+    }
+
+    func testBurnRateFiresOnForecasterMediumOrAbove() {
+        var fired: [NotificationKind] = []
+        let prefs = Preferences(defaults: UserDefaults(suiteName: "burn-\(UUID().uuidString)")!)
+        prefs.notifyBurnRate = true
+
+        let mgr = NotificationManager(prefs: prefs) { kind, _, _ in
+            fired.append(kind)
+        }
+        let now = Date()
+        let snap = SessionBlockSnapshot(
+            startedAt: now.addingTimeInterval(-1800),
+            resetsAt:  now.addingTimeInterval(16_200),
+            usedFraction: 0.6,
+            totalTokens: 1
+        )
+
+        mgr.evaluateBurnRate(session: snap, forecast: ForecastResult(
+            willHit: true,
+            hitAt: now.addingTimeInterval(1200),
+            confidence: .medium,
+            basis: .ewma
+        ))
+
+        XCTAssertEqual(fired, [.burnRate])
+    }
+
+    func testBurnRateDoesNotFireOnLowConfidence() {
+        var fired: [NotificationKind] = []
+        let prefs = Preferences(defaults: UserDefaults(suiteName: "burn-low-\(UUID().uuidString)")!)
+        prefs.notifyBurnRate = true
+
+        let mgr = NotificationManager(prefs: prefs) { kind, _, _ in
+            fired.append(kind)
+        }
+        let now = Date()
+        let snap = SessionBlockSnapshot(
+            startedAt: now.addingTimeInterval(-1800),
+            resetsAt:  now.addingTimeInterval(16_200),
+            usedFraction: 0.6,
+            totalTokens: 1
+        )
+
+        mgr.evaluateBurnRate(session: snap, forecast: ForecastResult(
+            willHit: true,
+            hitAt: now.addingTimeInterval(1200),
+            confidence: .low,
+            basis: .ewma
+        ))
+
+        XCTAssertTrue(fired.isEmpty)
     }
 
     func testPreferencesPersistAcrossInstances() {
