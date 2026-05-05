@@ -12,6 +12,10 @@ final class AppModel: ObservableObject {
     @Published var topTools: [ToolBreakdown] = []
     @Published var cacheHitRate: Double = 0
     @Published var weekSpend: [Double] = []
+    @Published var forecastBlock: ForecastResult?
+    @Published var forecastWeekly: ForecastResult?
+    @Published var weekDelta: WeekDelta?
+    @Published var modelMix: [ModelFamily: Double] = [:]
     @Published var dataSourceStatus: DataSourceStatus = .unknown
     @Published var isRefreshing: Bool = false
     @Published var heroMode: HeroMode = .today
