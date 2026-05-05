@@ -29,7 +29,9 @@ final class AppModel: ObservableObject {
 
     let loginItem: LoginItemController
     let preferences: Preferences
+    let budgets: BudgetStore
     private var prefsCancellable: AnyCancellable?
+    private var budgetsCancellable: AnyCancellable?
 
     var primaryMetric: PrimaryMetric {
         get { preferences.primaryMetric }
@@ -51,14 +53,23 @@ final class AppModel: ObservableObject {
     /// `Preferences.objectWillChange` flows through the model).
     func t(_ key: L) -> String { L10n.tr(key, language) }
 
-    init(loginItem: LoginItemController? = nil, preferences: Preferences? = nil) {
+    init(loginItem: LoginItemController? = nil,
+         preferences: Preferences? = nil,
+         budgets: BudgetStore? = nil) {
         self.loginItem = loginItem ?? LoginItemController()
         let prefs = preferences ?? .shared
         self.preferences = prefs
+        let store = budgets ?? BudgetStore()
+        self.budgets = store
         // Forward Preferences changes so any view bound to AppModel
         // (popover, settings, menu bar label) live-updates when the user
         // toggles language / layout / metric in Settings.
         self.prefsCancellable = prefs.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async { self?.objectWillChange.send() }
+        }
+        // Forward BudgetStore changes so the Settings UI redraws when
+        // budgets are added/removed/edited.
+        self.budgetsCancellable = store.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { self?.objectWillChange.send() }
         }
     }

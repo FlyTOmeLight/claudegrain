@@ -35,7 +35,9 @@ final class AppCoordinator {
         self.ingest = IngestActor(db: db)
         self.dataSource = DataSourceCoordinator()
 
-        let store = BudgetStore()
+        // Reuse the BudgetStore owned by AppModel so the Settings UI and
+        // the NotificationManager observe the same instance.
+        let store = model.budgets
         store.migrateLegacyKeyIfNeeded()
         self.budgets = store
 

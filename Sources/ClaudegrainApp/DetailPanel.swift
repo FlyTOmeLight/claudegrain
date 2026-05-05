@@ -590,6 +590,8 @@ struct SettingsView: View {
         TabView {
             generalTab.tabItem { Label(model.t(.settingsGeneral), systemImage: "gear") }
             notificationsTab.tabItem { Label(model.t(.settingsNotifications), systemImage: "bell") }
+            BudgetsTab(budgets: model.budgets, recentRepos: model.topRepos.map { $0.id })
+                .tabItem { Label(model.t(.settingsBudgets), systemImage: "dollarsign.circle") }
             aboutTab.tabItem { Label(model.t(.settingsAbout), systemImage: "info.circle") }
         }
         .frame(width: 460, height: 380)

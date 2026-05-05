@@ -98,6 +98,16 @@ enum L: String, Hashable {
     case settingsGeneral
     case settingsNotifications
     case settingsAbout
+    case settingsBudgets
+
+    // Settings — budgets
+    case budgetsGlobalSection
+    case budgetsGlobalDaily
+    case budgetsRepoSection
+    case budgetsAddSection
+    case budgetsAddRepoPlaceholder
+    case budgetsAddButton
+    case budgetsEmpty
 
     // Settings — general
     case sgMenuBarShows
@@ -219,6 +229,14 @@ enum L10n {
         .settingsGeneral: "General",
         .settingsNotifications: "Notifications",
         .settingsAbout: "About",
+        .settingsBudgets:           "Budgets",
+        .budgetsGlobalSection:      "Global default",
+        .budgetsGlobalDaily:        "Daily $",
+        .budgetsRepoSection:        "Per-repo overrides",
+        .budgetsAddSection:         "Add repo budget",
+        .budgetsAddRepoPlaceholder: "Repo path or alias",
+        .budgetsAddButton:          "Add",
+        .budgetsEmpty:              "No per-repo budgets yet.",
 
         .sgMenuBarShows: "Menu bar shows",
         .sgSessionPct: "Session %",
@@ -329,6 +347,14 @@ enum L10n {
         .settingsGeneral: "通用",
         .settingsNotifications: "通知",
         .settingsAbout: "关于",
+        .settingsBudgets:           "预算",
+        .budgetsGlobalSection:      "全局默认",
+        .budgetsGlobalDaily:        "日预算 $",
+        .budgetsRepoSection:        "按仓库覆盖",
+        .budgetsAddSection:         "添加仓库预算",
+        .budgetsAddRepoPlaceholder: "仓库路径或别名",
+        .budgetsAddButton:          "添加",
+        .budgetsEmpty:              "暂无单仓库预算。",
 
         .sgMenuBarShows: "菜单栏显示",
         .sgSessionPct: "会话 %",
