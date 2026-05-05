@@ -349,6 +349,26 @@ public actor EventsDatabase {
         }
     }
 
+    /// Sum cost grouped by `ModelFamily` over the half-open interval [since, until).
+    /// Family grouping happens in Swift (ADR-0006); SQL just sums per raw model id.
+    public func costPerModel(since: Date, until: Date) throws -> [ModelFamily: Double] {
+        let rows: [(model: String, cost: Double)] = try pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT model, COALESCE(SUM(cost_usd), 0) AS s
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                GROUP BY model
+                """, arguments: [since, until])
+                .map { (model: $0["model"] ?? "", cost: $0["s"] ?? 0.0) }
+        }
+
+        var out: [ModelFamily: Double] = [:]
+        for r in rows {
+            out[ModelFamily.parse(r.model), default: 0] += r.cost
+        }
+        return out
+    }
+
     /// 7-day daily spend totals (USD) ending at `now`. Returns 7 values, oldest → newest.
     public func costPerDay(days: Int = 7, now: Date = .now, calendar: Calendar = .current) throws -> [Double] {
         var result = [Double](repeating: 0, count: days)

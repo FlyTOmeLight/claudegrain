@@ -96,6 +96,55 @@ final class EventsDatabaseTests: XCTestCase {
         XCTAssertEqual(totals.totalTokens, 30, "second insert at same (file, offset) should be ignored")
     }
 
+    func testCostPerModelGroupsByFamily() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let opus = makeEvent(model: "claude-opus-4-7", inputTokens: 1_000_000, ts: now)
+        let sonnet1 = makeEvent(model: "claude-sonnet-4-6", inputTokens: 1_000_000, ts: now, sessionId: "s1")
+        let sonnet2 = makeEvent(model: "claude-sonnet-4-6", inputTokens: 500_000, ts: now, sessionId: "s2")
+        let expectedOpus = CostCalculator.cost(for: opus)
+        let expectedSonnet = CostCalculator.cost(for: sonnet1) + CostCalculator.cost(for: sonnet2)
+
+        try await db.insertEvents(
+            [opus, sonnet1, sonnet2],
+            from: "/tmp/cpm-family.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 3, inode: 1, deviceId: 1, sizeAtLastRead: 3)
+        )
+
+        let map = try await db.costPerModel(
+            since: now.addingTimeInterval(-60),
+            until: now.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(map[.opus] ?? 0, expectedOpus, accuracy: 0.0001)
+        XCTAssertEqual(map[.sonnet] ?? 0, expectedSonnet, accuracy: 0.0001)
+        XCTAssertNil(map[.haiku])
+    }
+
+    func testCostPerModelHonorsTimeWindow() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let yesterday = now.addingTimeInterval(-86_400)
+        let stale = makeEvent(model: "claude-opus-4-7", inputTokens: 9_000_000, ts: yesterday, sessionId: "stale")
+        let fresh = makeEvent(model: "claude-opus-4-7", inputTokens: 1_000_000, ts: now, sessionId: "fresh")
+        let expectedFresh = CostCalculator.cost(for: fresh)
+
+        try await db.insertEvents(
+            [stale, fresh],
+            from: "/tmp/cpm-window.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 2, inode: 2, deviceId: 1, sizeAtLastRead: 2)
+        )
+
+        let map = try await db.costPerModel(
+            since: now.addingTimeInterval(-3600),
+            until: now.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(map[.opus] ?? 0, expectedFresh, accuracy: 0.0001)
+    }
+
     /// Same logical assistant turn replayed in two distinct jsonl files
     /// (parent + sidechain). With a real `dedup_key` the second one is skipped.
     func testDedupAcrossSourceFiles() async throws {
@@ -115,5 +164,30 @@ final class EventsDatabaseTests: XCTestCase {
 
         let totals = try await db.dailyTotals(on: Date())
         XCTAssertEqual(totals.totalTokens, 300, "duplicate dedup_key across files must be ignored")
+    }
+
+    private func makeEvent(
+        model: String,
+        inputTokens: Int = 0,
+        outputTokens: Int = 0,
+        cacheCreationTokens: Int = 0,
+        cacheReadTokens: Int = 0,
+        ts: Date,
+        sessionId: String = "s",
+        cwd: String? = "/repo",
+        tools: [String] = []
+    ) -> UsageEvent {
+        UsageEvent(
+            timestamp: ts,
+            sessionId: sessionId,
+            cwd: cwd,
+            gitBranch: nil,
+            model: model,
+            tools: tools,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens
+        )
     }
 }
