@@ -142,4 +142,38 @@ final class EventsExporterTests: XCTestCase {
         XCTAssertTrue(csv.contains("timestamp,session_id,repo,git_branch,model,primary_tool,input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens,cost_usd"))
         XCTAssertTrue(csv.contains(",sess-1,/a,main,claude-opus-4-7,Bash,100,200,1000,5000,"))
     }
+
+    func testJSONExportEnvelopeAndPerRepoData() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).db")
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let event = UsageEvent(
+            timestamp: now, sessionId: "s", cwd: "/a", gitBranch: nil,
+            model: "claude-opus-4-7", tools: [],
+            inputTokens: 100, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0
+        )
+        try await db.insertEvents([event], from: "/x.jsonl", startingAt: 0, cursor: JSONLReader.Cursor())
+
+        let exporter = EventsExporter(db: db)
+        let outURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).json")
+        try await exporter.export(
+            range: DateInterval(start: now.addingTimeInterval(-3600), end: now.addingTimeInterval(3600)),
+            dimension: .perRepoDaily, format: .json, to: outURL
+        )
+
+        let data = try Data(contentsOf: outURL)
+        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let meta = try XCTUnwrap(json["_meta"] as? [String: Any])
+        XCTAssertEqual(meta["attribution"]    as? String, "primaryTool")
+        XCTAssertEqual(meta["dimension"]      as? String, "per-repo daily")
+        XCTAssertEqual(meta["disclaimer"]     as? String, "Public price-table cost estimate. Not the Anthropic billing source of truth.")
+        XCTAssertNotNil(meta["generated_at"])
+        XCTAssertNotNil(meta["range"])
+        let rows = try XCTUnwrap(json["rows"] as? [[String: Any]])
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0]["repo"] as? String, "/a")
+        XCTAssertEqual(rows[0]["events"] as? Int, 1)
+    }
 }

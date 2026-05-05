@@ -1,4 +1,5 @@
 import Foundation
+import GRDB
 
 public enum ExportDimension: String, CaseIterable, Sendable {
     case perRepoDaily   = "per-repo daily"
@@ -109,7 +110,81 @@ public struct EventsExporter: Sendable {
     }
 
     private func jsonPayload(range: DateInterval, dimension: ExportDimension) async throws -> String {
-        return "{}"
+        let iso = ISO8601DateFormatter()
+        iso.formatOptions = [.withInternetDateTime]
+        let meta: [String: Any] = [
+            "tool":         "claudegrain",
+            "attribution":  "primaryTool",
+            "disclaimer":   "Public price-table cost estimate. Not the Anthropic billing source of truth.",
+            "generated_at": iso.string(from: Date()),
+            "range": [
+                "start": iso.string(from: range.start),
+                "end":   iso.string(from: range.end),
+            ],
+            "dimension":    dimension.rawValue,
+        ]
+        let rows: [[String: Any]] = try await jsonRows(range: range, dimension: dimension)
+        let body: [String: Any] = ["_meta": meta, "rows": rows]
+        let data = try JSONSerialization.data(withJSONObject: body, options: [.prettyPrinted, .sortedKeys])
+        return String(data: data, encoding: .utf8) ?? "{}"
+    }
+
+    private func jsonRows(range: DateInterval, dimension: ExportDimension) async throws -> [[String: Any]] {
+        switch dimension {
+        case .perRepoDaily:
+            let rows = try await db.perRepoDaily(since: range.start, until: range.end)
+            return rows.map { (r) -> [String: Any] in
+                [
+                    "date": r.date, "repo": r.repo, "events": r.events,
+                    "input_tokens": r.input, "output_tokens": r.output,
+                    "cache_read_tokens": r.cacheRead, "cache_creation_tokens": r.cacheCreation,
+                    "cost_usd": r.cost,
+                ]
+            }
+        case .perToolDaily:
+            let rows = try await db.perToolDaily(since: range.start, until: range.end)
+            return rows.map { (r) -> [String: Any] in
+                [
+                    "date": r.date, "tool": r.tool, "events": r.events,
+                    "input_tokens": r.input, "output_tokens": r.output, "cost_usd": r.cost,
+                ]
+            }
+        case .perModelDaily:
+            let rows = try await db.perModelDaily(since: range.start, until: range.end)
+            return rows.map { (r) -> [String: Any] in
+                let fam = ModelFamily.parse(r.modelId)
+                return [
+                    "date": r.date, "model_family": String(describing: fam),
+                    "model_id": r.modelId, "events": r.events,
+                    "input_tokens": r.input, "output_tokens": r.output, "cost_usd": r.cost,
+                ]
+            }
+        case .rawEvents:
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let rows = try await db.rawEventsInRange(since: range.start, until: range.end)
+            return rows.map { (r: Row) -> [String: Any] in
+                let ts: Date = r["ts"] ?? Date()
+                let inTok: Int64 = r["in_tok"] ?? 0
+                let outTok: Int64 = r["out_tok"] ?? 0
+                let cc: Int64 = r["cache_create_tok"] ?? 0
+                let cr: Int64 = r["cache_read_tok"] ?? 0
+                let cost: Double = r["cost_usd"] ?? 0
+                return [
+                    "timestamp":  iso.string(from: ts),
+                    "session_id": (r["session_id"]   ?? "") as String,
+                    "repo":       (r["cwd"]          ?? "") as String,
+                    "git_branch": (r["git_branch"]   ?? "") as String,
+                    "model":      (r["model"]        ?? "") as String,
+                    "primary_tool": (r["primary_tool"] ?? "") as String,
+                    "input_tokens":  inTok,
+                    "output_tokens": outTok,
+                    "cache_creation_tokens": cc,
+                    "cache_read_tokens":     cr,
+                    "cost_usd":   cost,
+                ]
+            }
+        }
     }
 
     static func timestampNow() -> String {
