@@ -28,7 +28,10 @@ final class StatusItemController: ObservableObject {
         if let button = statusItem.button {
             button.subviews.forEach { $0.removeFromSuperview() }
             button.target = self
-            button.action = #selector(togglePopover(_:))
+            button.action = #selector(handleStatusClick(_:))
+            // Receive both left + right mouse-up so right-click can summon a
+            // context NSMenu while left-click keeps toggling the popover.
+            button.sendAction(on: [.leftMouseUp, .rightMouseUp])
             button.title = "claudegrain"
             updateButton()
         }
@@ -108,7 +111,17 @@ final class StatusItemController: ObservableObject {
         button.title = " \(valueText)"
     }
 
-    @objc private func togglePopover(_ sender: AnyObject?) {
+    @objc private func handleStatusClick(_ sender: AnyObject?) {
+        guard let button = statusItem.button else { return }
+        let event = NSApp.currentEvent
+        if event?.type == .rightMouseUp {
+            showContextMenu(from: button)
+        } else {
+            togglePopover(sender)
+        }
+    }
+
+    private func togglePopover(_ sender: AnyObject?) {
         guard let button = statusItem.button else { return }
         if popover.isShown {
             popover.performClose(sender)
@@ -116,5 +129,43 @@ final class StatusItemController: ObservableObject {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
         }
+    }
+
+    private func showContextMenu(from button: NSStatusBarButton) {
+        guard let model else { return }
+        let menu = NSMenu()
+
+        let exportItem = NSMenuItem(
+            title: model.t(.exportMenuItem),
+            action: #selector(handleExportMenu),
+            keyEquivalent: "e"
+        )
+        exportItem.target = self
+        menu.addItem(exportItem)
+
+        menu.addItem(.separator())
+
+        let quitItem = NSMenuItem(
+            title: model.t(.kbQuit),
+            action: #selector(handleQuitMenu),
+            keyEquivalent: "q"
+        )
+        quitItem.target = self
+        menu.addItem(quitItem)
+
+        // Popping the menu via statusItem.menu would steal the primary click
+        // action permanently. Showing it transiently with popUp keeps
+        // left-click → popover semantics intact.
+        menu.popUp(positioning: nil,
+                   at: NSPoint(x: 0, y: button.bounds.height + 4),
+                   in: button)
+    }
+
+    @objc private func handleExportMenu() {
+        AppDelegate.shared?.coordinator?.openExportSheet()
+    }
+
+    @objc private func handleQuitMenu() {
+        NSApp.terminate(nil)
     }
 }

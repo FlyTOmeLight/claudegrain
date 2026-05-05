@@ -15,10 +15,16 @@ struct ClaudegrainApp: App {
 
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
+    static private(set) weak var shared: AppDelegate?
     let model = AppModel()
     let statusController = StatusItemController()
-    private var coordinator: AppCoordinator?
+    private(set) var coordinator: AppCoordinator?
     private var previewWindow: NSWindow?
+
+    override init() {
+        super.init()
+        AppDelegate.shared = self
+    }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         FontRegistry.registerAll()
@@ -39,6 +45,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             coordinator = c
             model.refreshHandler = { [weak c] in
                 await c?.refreshNow()
+            }
+            model.exportHandler = { [weak c] in
+                c?.openExportSheet()
             }
             await c.start()
         } catch {

@@ -23,6 +23,10 @@ final class AppModel: ObservableObject {
     /// Wired by `AppDelegate` after `AppCoordinator` is constructed. Nil during preview/spike.
     var refreshHandler: (@MainActor () async -> Void)?
 
+    /// Opens the export sheet. Wired by `AppDelegate` after coordinator construction.
+    /// Nil during preview/spike.
+    var exportHandler: (@MainActor () -> Void)?
+
     let loginItem: LoginItemController
     let preferences: Preferences
     private var prefsCancellable: AnyCancellable?

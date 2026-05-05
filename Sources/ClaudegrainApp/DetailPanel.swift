@@ -435,6 +435,7 @@ private struct FooterBlock: View {
             HStack(spacing: 6) {
                 kbd("F2", model.t(.kbCfg)) { openSettingsWindow() }
                 refreshButton
+                kbd("E", model.t(.kbExport)) { model.exportHandler?() }
                 kbd("F10", model.t(.kbQuit)) { NSApp.terminate(nil) }
             }
             .padding(.top, 6)
