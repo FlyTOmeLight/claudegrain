@@ -65,8 +65,40 @@ public actor Forecaster {
         if recent.isEmpty {
             return .insufficient
         }
-        // Filled in next tasks (linear branch in Task 7, EWMA in Task 8).
-        return .insufficient
+        if recent.count < 3 {
+            return linearForecast(
+                usedFraction: usedFraction,
+                elapsedSeconds: elapsedSeconds,
+                remainingSeconds: remainingSeconds
+            )
+        }
+        // EWMA branch — Task 8.
+        return linearForecast(
+            usedFraction: usedFraction,
+            elapsedSeconds: elapsedSeconds,
+            remainingSeconds: remainingSeconds
+        )
+    }
+
+    private func linearForecast(
+        usedFraction: Double,
+        elapsedSeconds: Double,
+        remainingSeconds: Double
+    ) -> ForecastResult {
+        guard elapsedSeconds > 0, remainingSeconds > 0, usedFraction > 0 else {
+            return ForecastResult(willHit: false, hitAt: nil, confidence: .low, basis: .linear)
+        }
+        let ratePerSecond = usedFraction / elapsedSeconds      // fraction/sec
+        let secondsToHit  = (1.0 - usedFraction) / ratePerSecond
+        if secondsToHit <= remainingSeconds {
+            return ForecastResult(
+                willHit: true,
+                hitAt: Date().addingTimeInterval(secondsToHit),
+                confidence: .low,
+                basis: .linear
+            )
+        }
+        return ForecastResult(willHit: false, hitAt: nil, confidence: .low, basis: .linear)
     }
 
     static func mondayUTC(of date: Date) -> Date {
