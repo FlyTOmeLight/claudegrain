@@ -35,8 +35,30 @@ final class StatusItemController: ObservableObject {
 
         // Wire popover content once — SwiftUI re-renders via @EnvironmentObject.
         let panel = DetailPanel().environmentObject(model)
-        popover.contentViewController = NSHostingController(rootView: panel)
+        let host = NSHostingController(rootView: panel)
+        // .preferredContentSize tells the host to publish its intrinsic
+        // SwiftUI content size via `preferredContentSize`. We KVO on it and
+        // mirror to popover.contentSize so the fixed-layout mode resizes the
+        // popover to fit the actual content (no clip, no scrollbar).
+        host.sizingOptions = [.preferredContentSize]
+        popover.contentViewController = host
         popover.contentSize = NSSize(width: 340, height: 720)
+
+        // Track host's intrinsic size → popover.contentSize. Clamp height to
+        // available screen so a tall fixed-mode layout never gets its top
+        // clipped by the menu bar / screen edge.
+        let sizeObs = host.observe(\.preferredContentSize, options: [.new]) { [weak self] hc, _ in
+            guard let self else { return }
+            let s = hc.preferredContentSize
+            guard s.width > 0, s.height > 0 else { return }
+            DispatchQueue.main.async {
+                let width: CGFloat = 340
+                let visible = NSScreen.main?.visibleFrame.height ?? 800
+                let maxH = max(400, visible - 40)
+                self.popover.contentSize = NSSize(width: width, height: min(s.height, maxH))
+            }
+        }
+        self.observers = [sizeObs]
 
         // Re-render menu bar label on AppModel changes (popover updates itself).
         let cancel = model.objectWillChange.sink { [weak self] _ in

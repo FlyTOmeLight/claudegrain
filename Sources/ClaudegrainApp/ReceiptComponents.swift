@@ -110,43 +110,94 @@ struct StarsDivider: View {
     }
 }
 
-// MARK: - Hero TODAY
+// MARK: - Hero TOTAL / TODAY
 
+/// Displays the headline cost figure. Two clickable tabs switch between
+/// all-time spend (TOTAL) and today's spend (TODAY). Driven by
+/// `AppModel.heroMode`; when TODAY is selected, also shows a yesterday-delta
+/// hint.
 struct HeroSpend: View {
-    let totals: DailyTotals
+    @EnvironmentObject private var model: AppModel
     let yesterdayCost: Double
     @Environment(\.theme) private var theme
 
+    init(yesterdayCost: Double = 0) {
+        self.yesterdayCost = yesterdayCost
+    }
+
+    private var current: DailyTotals {
+        model.heroMode == .total ? model.allTimeTotals : model.todayTotals
+    }
+
     var body: some View {
         VStack(spacing: 4) {
-            Text("[ TOTAL · TODAY ]")
-                .font(.cgMonoSmall)
-                .tracking(2.2)
-                .foregroundStyle(theme.ink.opacity(0.6))
+            HStack(spacing: 6) {
+                tab(.heroTabTotal, mode: .total)
+                Text("·")
+                    .font(.cgMonoSmall)
+                    .foregroundStyle(theme.ink.opacity(0.4))
+                tab(.heroTabToday, mode: .today)
+            }
 
-            Text(String(format: "$%.2f", totals.costUSD))
+            Text(String(format: "$%.2f", current.costUSD))
                 .font(.cgDisplay)
                 .foregroundStyle(theme.inkBold)
                 .neonGlow(color: theme.inkBold, radius: 8, opacity: theme.glowEnabled ? 0.55 : 0)
                 .neonGlow(color: theme.inkBold, radius: 18, opacity: theme.glowEnabled ? 0.28 : 0)
+                .contentTransition(.numericText())
+                .animation(.easeOut(duration: 0.2), value: current.costUSD)
 
             HStack(spacing: 6) {
-                if yesterdayCost > 0 {
-                    let pct = (totals.costUSD - yesterdayCost) / yesterdayCost * 100
+                if model.heroMode == .today, yesterdayCost > 0 {
+                    let pct = (current.costUSD - yesterdayCost) / yesterdayCost * 100
                     Text("\(pct >= 0 ? "↑" : "↓") \(String(format: "%.1f", abs(pct)))%")
                         .font(.cgMonoMed)
                         .foregroundStyle(theme.crit)
                         .bold()
+                    Text(String(
+                        format: model.t(.heroVsYesterday),
+                        yesterdayCost,
+                        "\(current.totalTokens / 1000)"
+                    ))
+                        .font(.cgMonoMed)
+                        .foregroundStyle(theme.ink.opacity(0.55))
+                } else {
+                    Text(subLabel)
+                        .font(.cgMonoMed)
+                        .foregroundStyle(theme.ink.opacity(0.55))
                 }
-                Text("vs $\(String(format: "%.2f", yesterdayCost)) yest · \(totals.totalTokens / 1000)k tok")
-                    .font(.cgMonoMed)
-                    .foregroundStyle(theme.ink.opacity(0.55))
             }
             .padding(.top, 2)
 
-            ModelStackBar(byModel: totals.byModel)
+            ModelStackBar(byModel: current.byModel)
                 .padding(.top, 4)
         }
+    }
+
+    private var subLabel: String {
+        let toks = "\(current.totalTokens / 1000)"
+        switch model.heroMode {
+        case .total: return String(format: model.t(.heroSubLifetime), toks)
+        case .today: return String(format: model.t(.heroSubToday), toks)
+        }
+    }
+
+    private func tab(_ key: L, mode: HeroMode) -> some View {
+        let active = model.heroMode == mode
+        return Button {
+            withAnimation(.easeOut(duration: 0.18)) { model.heroMode = mode }
+        } label: {
+            Text("[ \(model.t(key)) ]")
+                .font(.cgMonoSmall.weight(active ? .bold : .regular))
+                .tracking(2.2)
+                .foregroundStyle(active ? theme.inkBold : theme.ink.opacity(0.4))
+                .neonGlow(
+                    color: theme.inkBold,
+                    radius: 2,
+                    opacity: active && theme.glowEnabled ? 0.45 : 0
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 

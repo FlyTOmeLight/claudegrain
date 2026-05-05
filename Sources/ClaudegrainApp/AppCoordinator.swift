@@ -65,6 +65,7 @@ final class AppCoordinator {
 
     private func applyIngestSnapshot(_ snapshot: IngestActor.Snapshot) {
         model.todayTotals = snapshot.today
+        model.allTimeTotals = snapshot.allTime
         model.topRepos = snapshot.topRepos
         model.topTools = snapshot.topTools
         model.cacheHitRate = snapshot.cacheHitRate

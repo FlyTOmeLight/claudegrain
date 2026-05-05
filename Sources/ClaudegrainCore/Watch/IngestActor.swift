@@ -14,6 +14,7 @@ public actor IngestActor {
 
     public struct Snapshot: Sendable {
         public let today: DailyTotals
+        public let allTime: DailyTotals
         public let topRepos: [RepoBreakdown]
         public let topTools: [ToolBreakdown]
         public let cacheHitRate: Double
@@ -151,6 +152,7 @@ public actor IngestActor {
         let now = Date()
         do {
             let totals = try await db.dailyTotals(on: now)
+            let allTime = try await db.allTimeTotals()
             var repos = try await db.topRepos(on: now)
             let tools = try await db.topTools(on: now)
             let cache = try await db.cacheHitRate(on: now)
@@ -169,6 +171,7 @@ public actor IngestActor {
 
             snapshotContinuation?.yield(.init(
                 today: totals,
+                allTime: allTime,
                 topRepos: repos,
                 topTools: tools,
                 cacheHitRate: cache,

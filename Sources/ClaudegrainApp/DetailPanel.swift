@@ -16,23 +16,44 @@ struct DetailPanel: View {
 
 private struct ReceiptScroll: View {
     let theme: Theme
+    @EnvironmentObject private var model: AppModel
 
     var body: some View {
         VStack(spacing: 0) {
             PaperEdgeShape(side: .top)
                 .fill(theme.paperBg)
                 .frame(height: 8)
-            ScrollView(.vertical, showsIndicators: false) {
-                ReceiptBody()
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 12)
-            }
-            .background(scanlineOverlay)
+            content
+                .background(scanlineOverlay)
             PaperEdgeShape(side: .bottom)
                 .fill(theme.paperBg)
                 .frame(height: 8)
         }
         .frame(width: 340)
+    }
+
+    @ViewBuilder
+    private var content: some View {
+        switch model.layoutMode {
+        case .scroll:
+            // Scroll mode: lock 720pt so popover stays at fixed height and
+            // overflow gets a scrollbar. NSHostingController publishes this
+            // height via preferredContentSize.
+            ScrollView(.vertical, showsIndicators: false) {
+                ReceiptBody()
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+            }
+            .frame(height: 720)
+        case .fixed:
+            // Fixed mode: intrinsic size only. NSHostingController.sizingOptions
+            // = .preferredContentSize publishes the natural content height; the
+            // status item controller mirrors it to the popover.
+            ReceiptBody()
+                .padding(.horizontal, 14)
+                .padding(.vertical, 12)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 
     @ViewBuilder
@@ -64,7 +85,7 @@ private struct ReceiptBody: View {
     var body: some View {
         VStack(spacing: 6) {
             StencilTitleView()
-            Text("v 0.1 · usage · live")
+            Text(model.t(.versionTagline))
                 .font(.cgMonoXSmall)
                 .tracking(3.2)
                 .foregroundStyle(theme.ink.opacity(0.55))
@@ -73,26 +94,26 @@ private struct ReceiptBody: View {
 
             DoubleDivider()
 
-            HeroSpend(totals: model.todayTotals, yesterdayCost: 7.5)
+            HeroSpend(yesterdayCost: 7.5)
 
             DashedDivider()
 
-            SectionHeader(label: "USAGE LIMITS")
+            SectionHeader(label: model.t(.sectionUsageLimits))
             VStack(spacing: 2) {
                 VitalRow(
-                    label: "SESSION",
+                    label: model.t(.vitalSession),
                     percent: model.sessionBlock?.usedFraction ?? 0,
                     resetText: model.sessionBlock?.resetCountdown ?? "—",
                     isWarn: (model.sessionBlock?.usedFraction ?? 0) >= 0.7
                 )
                 VitalRow(
-                    label: "WEEKLY",
+                    label: model.t(.vitalWeekly),
                     percent: model.weekly?.usedFraction ?? 0,
                     resetText: model.weekly?.resetLabel ?? "—",
                     isWarn: (model.weekly?.usedFraction ?? 0) >= 0.85
                 )
                 VitalRow(
-                    label: "CACHE",
+                    label: model.t(.vitalCache),
                     percent: model.cacheHitRate,
                     resetText: cacheBaselineLabel,
                     isWarn: model.cacheHitRate >= 0.7 && model.cacheHitRate < 0.95
@@ -101,20 +122,24 @@ private struct ReceiptBody: View {
 
             DashedDivider()
 
-            SectionHeader(label: "7d SPEND · LINE")
+            SectionHeader(label: model.t(.sectionSpend7d))
             WeekLineChart(points: weekPoints, todayValue: model.todayTotals.costUSD)
             WeekDayLabels()
 
             StarsDivider()
 
-            SectionHeader(label: "TOP COSTS · 7d trend")
+            SectionHeader(label: model.t(.sectionTopCosts))
             TopCostsList()
 
             DoubleDivider()
 
-            SubtotalsBlock()
-
-            DoubleDivider()
+            // Fixed mode skips the dense subtotals/cache breakdown so the
+            // popover fits an HD screen without clipping. Scroll mode keeps
+            // the full receipt.
+            if model.layoutMode == .scroll {
+                SubtotalsBlock()
+                DoubleDivider()
+            }
 
             NetTotalRow()
 
@@ -133,7 +158,7 @@ private struct ReceiptBody: View {
 
     private var cacheBaselineLabel: String {
         let pct = Int((model.cacheHitRate * 100).rounded())
-        return "↑ \(pct)% hit · vs P50"
+        return String(format: model.t(.cacheBaseline), pct)
     }
 }
 
@@ -144,7 +169,7 @@ private struct HeaderStrip: View {
     var body: some View {
         HStack(spacing: 6) {
             LiveDot()
-            Text("LIVE")
+            Text(model.t(.statusLive))
                 .font(.cgMonoSmall)
                 .tracking(1.8)
                 .foregroundStyle(theme.inkBold)
@@ -166,11 +191,11 @@ private struct HeaderStrip: View {
 
     private var statusLabel: String {
         switch model.dataSourceStatus {
-        case .oauthLive: return "OAUTH ✓"
-        case .jsonlOnly: return "JSONL"
-        case .cliFallback: return "CLI"
-        case .offline: return "OFFLINE"
-        case .unknown: return "BOOT"
+        case .oauthLive: return model.t(.statusOauth)
+        case .jsonlOnly: return model.t(.statusJsonl)
+        case .cliFallback: return model.t(.statusCli)
+        case .offline: return model.t(.statusOffline)
+        case .unknown: return model.t(.statusBoot)
         }
     }
 
@@ -291,8 +316,11 @@ private struct SubtotalsBlock: View {
 
     var body: some View {
         VStack(spacing: 1) {
-            row("SHOWN · TOP \(model.topRepos.count) REPOS", String(format: "$%.2f", topReposSum))
-            row("OTHER REPOS", "$0.00")
+            row(
+                String(format: model.t(.subtotalShown), model.topRepos.count),
+                String(format: "$%.2f", topReposSum)
+            )
+            row(model.t(.subtotalOther), "$0.00")
             cacheBlock
         }
     }
@@ -318,7 +346,7 @@ private struct SubtotalsBlock: View {
         VStack(alignment: .leading, spacing: 2) {
             Spacer().frame(height: 4)
             HStack {
-                Text("CACHE SAVINGS BREAKDOWN")
+                Text(model.t(.subtotalCacheBreakdown))
                     .font(.cgMonoSmall)
                     .tracking(1.6)
                     .foregroundStyle(theme.ink.opacity(0.7))
@@ -328,9 +356,9 @@ private struct SubtotalsBlock: View {
                     .foregroundStyle(theme.inkBold)
                     .neonGlow(color: theme.inkBold, radius: 1.5, opacity: theme.glowEnabled ? 0.4 : 0)
             }
-            cacheRow("Read · cache hits", "@$3.20/M", "−$3.39")
-            cacheRow("Write · cached", "@$15/M ✗", "−$0.57")
-            cacheRow("Hit rate boost", "+12pp", "−$0.24")
+            cacheRow(model.t(.cacheReadHits), "@$3.20/M", "−$3.39")
+            cacheRow(model.t(.cacheWriteCached), "@$15/M ✗", "−$0.57")
+            cacheRow(model.t(.cacheHitRateBoost), "+12pp", "−$0.24")
         }
     }
 
@@ -367,7 +395,7 @@ private struct NetTotalRow: View {
 
     var body: some View {
         HStack {
-            Text("NET TODAY")
+            Text(model.t(.netToday))
                 .font(.cgMono.weight(.bold))
                 .tracking(1.6)
                 .foregroundStyle(theme.ink)
@@ -386,17 +414,18 @@ private struct NetTotalRow: View {
 private struct FooterBlock: View {
     @Environment(\.theme) private var theme
     @EnvironmentObject private var model: AppModel
+    @State private var spinAngle: Double = 0
 
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 6) {
-                kbd("F2", "cfg") { openSettingsWindow() }
-                kbd("F5", "refresh") { triggerRefresh() }
-                kbd("F10", "quit") { NSApp.terminate(nil) }
+                kbd("F2", model.t(.kbCfg)) { openSettingsWindow() }
+                refreshButton
+                kbd("F10", model.t(.kbQuit)) { NSApp.terminate(nil) }
             }
             .padding(.top, 6)
 
-            Text("───── END · \(eventCount) EVENTS ─────")
+            Text("───── \(String(format: model.t(.footerEndEvents), eventCount)) ─────")
                 .font(.cgMonoXSmall)
                 .tracking(1.6)
                 .foregroundStyle(theme.ink.opacity(0.55))
@@ -427,17 +456,79 @@ private struct FooterBlock: View {
         // LSUIElement = true ⇒ default policy is .accessory; activate explicitly
         // so the Settings scene window comes forward and accepts focus.
         NSApp.activate(ignoringOtherApps: true)
-        // `\.openSettings` exists in newer SDKs but the CI Xcode 15 SDK is
-        // missing the symbol. Selector dispatch hits the same AppKit hook
-        // that SwiftUI's accessor uses internally and works on macOS 13+.
+        // `\.openSettings` is the SwiftUI-native path but the CI Xcode 15 SDK
+        // is missing the symbol (see commit 1fd1f27). Selector dispatch hits
+        // the same AppKit hook on macOS 13+. After firing, walk the windows
+        // and bring any settings window forward — selector alone fails to
+        // re-key the window on subsequent taps when the app is LSUIElement.
         NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            for w in NSApp.windows {
+                let id = w.identifier?.rawValue.lowercased() ?? ""
+                let title = w.title.lowercased()
+                if id.contains("settings") || title.contains("settings") || title.contains("设置") {
+                    w.makeKeyAndOrderFront(nil)
+                }
+            }
+        }
+    }
+
+    private var refreshButton: some View {
+        Button(action: triggerRefresh) {
+            HStack(spacing: 4) {
+                Text("F5")
+                    .font(.cgMonoSmall.weight(.bold))
+                    .foregroundStyle(theme.paperBg)
+                    .padding(.horizontal, 4)
+                    .padding(.vertical, 1)
+                    .background(theme.inkBold)
+                    .cornerRadius(2)
+                HStack(spacing: 2) {
+                    Text(model.t(.kbRefresh))
+                        .font(.cgMonoSmall)
+                        .tracking(0.6)
+                    Text("↻")
+                        .font(.cgMonoSmall.weight(.bold))
+                        .rotationEffect(.degrees(spinAngle))
+                        .opacity(model.isRefreshing ? 1 : 0.55)
+                }
+                .foregroundStyle(theme.inkBold)
+            }
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(theme.inkBold.opacity(0.08))
+            .overlay(
+                RoundedRectangle(cornerRadius: 3)
+                    .stroke(theme.inkBold.opacity(0.4), lineWidth: 1)
+            )
+            .cornerRadius(3)
+            .neonGlow(color: theme.inkBold, radius: 3, opacity: theme.glowEnabled ? 0.18 : 0)
+        }
+        .buttonStyle(.plain)
+        .onChange(of: model.isRefreshing) { _, isRefreshing in
+            if isRefreshing {
+                spinAngle = 0
+                withAnimation(.linear(duration: 0.7).repeatForever(autoreverses: false)) {
+                    spinAngle = 360
+                }
+            } else {
+                withAnimation(.easeOut(duration: 0.2)) { spinAngle = 0 }
+            }
+        }
     }
 
     private func triggerRefresh() {
         guard let handler = model.refreshHandler, !model.isRefreshing else { return }
         model.isRefreshing = true
         Task { @MainActor in
+            // Floor the spinner duration so the user perceives a real refresh
+            // pulse even when the underlying snapshot returns instantly.
+            let start = Date()
             await handler()
+            let remainder = 0.6 - Date().timeIntervalSince(start)
+            if remainder > 0 {
+                try? await Task.sleep(nanoseconds: UInt64(remainder * 1_000_000_000))
+            }
             model.isRefreshing = false
         }
     }
@@ -478,26 +569,40 @@ struct SettingsView: View {
 
     var body: some View {
         TabView {
-            generalTab.tabItem { Label("General", systemImage: "gear") }
-            notificationsTab.tabItem { Label("Notifications", systemImage: "bell") }
-            aboutTab.tabItem { Label("About", systemImage: "info.circle") }
+            generalTab.tabItem { Label(model.t(.settingsGeneral), systemImage: "gear") }
+            notificationsTab.tabItem { Label(model.t(.settingsNotifications), systemImage: "bell") }
+            aboutTab.tabItem { Label(model.t(.settingsAbout), systemImage: "info.circle") }
         }
-        .frame(width: 460, height: 360)
+        .frame(width: 460, height: 380)
         .padding(.top, 8)
     }
 
     private var generalTab: some View {
         Form {
-            Picker("Menu bar shows", selection: Binding(
+            Picker(model.t(.sgMenuBarShows), selection: Binding(
                 get: { model.primaryMetric },
                 set: { model.primaryMetric = $0 }
             )) {
-                Text("Session %").tag(PrimaryMetric.sessionPercent)
-                Text("Weekly %").tag(PrimaryMetric.weeklyPercent)
-                Text("Today $").tag(PrimaryMetric.todayCost)
-                Text("Cache hit %").tag(PrimaryMetric.cacheHit)
+                Text(model.t(.sgSessionPct)).tag(PrimaryMetric.sessionPercent)
+                Text(model.t(.sgWeeklyPct)).tag(PrimaryMetric.weeklyPercent)
+                Text(model.t(.sgTodayCost)).tag(PrimaryMetric.todayCost)
+                Text(model.t(.sgCacheHit)).tag(PrimaryMetric.cacheHit)
             }
-            Toggle("Open at login", isOn: Binding(
+            Picker(model.t(.sgLanguage), selection: Binding(
+                get: { model.language },
+                set: { model.language = $0 }
+            )) {
+                Text(model.t(.sgLanguageEnglish)).tag(AppLanguage.english)
+                Text(model.t(.sgLanguageChinese)).tag(AppLanguage.chinese)
+            }
+            Picker(model.t(.sgLayout), selection: Binding(
+                get: { model.layoutMode },
+                set: { model.layoutMode = $0 }
+            )) {
+                Text(model.t(.sgLayoutScroll)).tag(LayoutMode.scroll)
+                Text(model.t(.sgLayoutFixed)).tag(LayoutMode.fixed)
+            }
+            Toggle(model.t(.sgOpenAtLogin), isOn: Binding(
                 get: { model.loginItem.isEnabled },
                 set: { model.loginItem.setEnabled($0) }
             ))
@@ -511,24 +616,20 @@ struct SettingsView: View {
 
     private var notificationsTab: some View {
         Form {
-            Section("Triggers") {
-                Toggle("Threshold alerts (session 70/90% · weekly 85%)",
-                       isOn: prefBinding(\.notifyThreshold))
-                Toggle("Burn-rate spikes (over P90 × 2)",
-                       isOn: prefBinding(\.notifyBurnRate))
-                Toggle("Block reset (10 min before)",
-                       isOn: prefBinding(\.notifyBlockReset))
-                Toggle("Per-repo overspend",
-                       isOn: prefBinding(\.notifyRepoOverspend))
+            Section(model.t(.snTriggers)) {
+                Toggle(model.t(.snThreshold), isOn: prefBinding(\.notifyThreshold))
+                Toggle(model.t(.snBurnRate), isOn: prefBinding(\.notifyBurnRate))
+                Toggle(model.t(.snBlockReset), isOn: prefBinding(\.notifyBlockReset))
+                Toggle(model.t(.snRepoOverspend), isOn: prefBinding(\.notifyRepoOverspend))
             }
-            Section("Sound") {
-                Picker("Sound", selection: soundBinding) {
-                    Text("claudegrain default").tag(SoundChoice.app)
-                    Text("Glass (system)").tag(SoundChoice.system(name: "Glass"))
-                    Text("Ping (system)").tag(SoundChoice.system(name: "Ping"))
+            Section(model.t(.snSound)) {
+                Picker(model.t(.snSound), selection: soundBinding) {
+                    Text(model.t(.snSoundDefault)).tag(SoundChoice.app)
+                    Text(model.t(.snSoundGlass)).tag(SoundChoice.system(name: "Glass"))
+                    Text(model.t(.snSoundPing)).tag(SoundChoice.system(name: "Ping"))
                 }
                 .pickerStyle(.menu)
-                Button("Import sound file…") { importSound() }
+                Button(model.t(.snImportSound)) { importSound() }
             }
         }
         .formStyle(.grouped)
@@ -542,12 +643,12 @@ struct SettingsView: View {
             Text("v\(Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String ?? "0.1.0")")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            Text("Granular Claude Code usage in your menu bar.")
+            Text(model.t(.saTagline))
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center)
-            Text("MIT licensed · open source")
+            Text(model.t(.saMit))
                 .font(.caption).foregroundStyle(.tertiary)
             Spacer()
-            Button("View source on GitHub") {
+            Button(model.t(.saViewSource)) {
                 if let url = URL(string: "https://github.com/Artzainnn/claudegrain") {
                     NSWorkspace.shared.open(url)
                 }

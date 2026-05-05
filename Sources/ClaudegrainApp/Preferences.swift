@@ -8,6 +8,16 @@ enum PrimaryMetric: String, CaseIterable, Codable {
     case cacheHit
 }
 
+enum AppLanguage: String, CaseIterable, Codable, Hashable {
+    case english
+    case chinese
+}
+
+enum LayoutMode: String, CaseIterable, Codable, Hashable {
+    case scroll   // ScrollView wraps the receipt content
+    case fixed    // Plain VStack — no scroll, popover sized to content
+}
+
 enum SoundChoice: Equatable, Hashable, Codable {
     case app
     case system(name: String)
@@ -24,6 +34,8 @@ final class Preferences: ObservableObject {
         static let repoOverspendThresholdUSD = "repoOverspendThresholdUSD"
         static let primaryMetric = "primaryMetric"
         static let notificationSound = "notificationSound"
+        static let language = "language"
+        static let layoutMode = "layoutMode"
     }
 
     static let shared = Preferences()
@@ -39,7 +51,31 @@ final class Preferences: ObservableObject {
             Key.notifyRepoOverspend: false,
             Key.repoOverspendThresholdUSD: 10.0,
             Key.primaryMetric: PrimaryMetric.sessionPercent.rawValue,
+            Key.language: AppLanguage.chinese.rawValue,
+            Key.layoutMode: LayoutMode.scroll.rawValue,
         ])
+    }
+
+    var language: AppLanguage {
+        get {
+            let raw = defaults.string(forKey: Key.language) ?? AppLanguage.chinese.rawValue
+            return AppLanguage(rawValue: raw) ?? .chinese
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.language)
+            objectWillChange.send()
+        }
+    }
+
+    var layoutMode: LayoutMode {
+        get {
+            let raw = defaults.string(forKey: Key.layoutMode) ?? LayoutMode.scroll.rawValue
+            return LayoutMode(rawValue: raw) ?? .scroll
+        }
+        set {
+            defaults.set(newValue.rawValue, forKey: Key.layoutMode)
+            objectWillChange.send()
+        }
     }
 
     var repoOverspendThresholdUSD: Double {

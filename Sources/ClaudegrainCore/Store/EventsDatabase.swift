@@ -215,6 +215,39 @@ public actor EventsDatabase {
         }
     }
 
+    /// All-time totals across the entire events table. Wired to the HeroSpend
+    /// "TOTAL" tab so users can see lifetime spend vs today.
+    public func allTimeTotals() throws -> DailyTotals {
+        return try pool.read { db in
+            let row = try Row.fetchOne(
+                db,
+                sql: """
+                SELECT
+                  COALESCE(SUM(cost_usd), 0) AS cost,
+                  COALESCE(SUM(in_tok + out_tok + cache_create_tok + cache_read_tok), 0) AS toks
+                FROM events
+                """
+            )
+            let cost = row?["cost"] as? Double ?? 0
+            let toks = Int(row?["toks"] as? Int64 ?? 0)
+
+            var byModel: [String: Int] = [:]
+            let modelRows = try Row.fetchAll(
+                db,
+                sql: """
+                SELECT model, SUM(in_tok + out_tok + cache_create_tok + cache_read_tok) AS toks
+                FROM events
+                GROUP BY model
+                """
+            )
+            for row in modelRows {
+                let m: String = row["model"]
+                byModel[m] = Int(row["toks"] as Int64? ?? 0)
+            }
+            return DailyTotals(costUSD: cost, totalTokens: toks, byModel: byModel)
+        }
+    }
+
     public func topRepos(on day: Date, limit: Int = 5, calendar: Calendar = .current) throws -> [RepoBreakdown] {
         let (start, end) = Self.dayBounds(day, calendar: calendar)
         return try pool.read { db in
