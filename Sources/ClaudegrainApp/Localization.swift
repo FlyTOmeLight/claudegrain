@@ -46,6 +46,54 @@ enum L: String, Hashable {
     case kbQuit
     case footerEndEvents              // "END · %@ EVENTS"
 
+    // v0.2 — forecast badge
+    case forecastBlockHits        // "block hits %@"
+    case forecastBlockSafe        // "block · safe"
+    case forecastWeeklyHits       // "weekly hits %@"
+    case forecastConfidenceLow    // "low conf"
+    case forecastConfidenceMedium // "medium"
+    case forecastConfidenceHigh   // "high"
+    case forecastBasisEwma        // "ewma"
+    case forecastBasisLinear      // "linear"
+
+    // v0.2 — week delta row
+    case weekDeltaLabel           // "Δ vs last week"
+    case weekDeltaPctUp           // "+%d%% · cache %@"
+    case weekDeltaPctDown         // "%d%% · cache %@"  (negative pct)
+    case weekDeltaCacheUp         // "+%d pp"
+    case weekDeltaCacheDown       // "%d pp"
+    case weekDeltaFirstWeek       // "first week"
+
+    // v0.2 — model mix
+    case modelMixLabel            // "MODELS"
+    case modelMixOpus             // "opus"
+    case modelMixSonnet           // "sonnet"
+    case modelMixHaiku            // "haiku"
+    case modelMixUnknown          // "other"
+
+    // v0.2 — export
+    case exportMenuItem           // "Export Usage…"
+    case exportSheetTitle         // "Export usage data"
+    case exportRangeLabel         // "Range"
+    case exportRangeToday
+    case exportRangeLast7d
+    case exportRangeLast30d
+    case exportRangeThisWeek
+    case exportRangeLastWeek
+    case exportRangeCustom
+    case exportDimensionLabel
+    case exportDimRepoDaily
+    case exportDimToolDaily
+    case exportDimModelDaily
+    case exportDimRaw
+    case exportFormatLabel
+    case exportButton             // "Export…"
+    case exportCancel             // "Cancel"
+    case exportDone               // "Saved to %@"
+
+    // v0.2 — kbd
+    case kbExport                 // "export"
+
     // Settings — tabs
     case settingsGeneral
     case settingsNotifications
@@ -129,6 +177,45 @@ enum L10n {
         .kbQuit: "quit",
         .footerEndEvents: "END · %@ EVENTS",
 
+        .forecastBlockHits:        "block hits %@",
+        .forecastBlockSafe:        "block · safe",
+        .forecastWeeklyHits:       "weekly hits %@",
+        .forecastConfidenceLow:    "low conf",
+        .forecastConfidenceMedium: "medium",
+        .forecastConfidenceHigh:   "high",
+        .forecastBasisEwma:        "ewma",
+        .forecastBasisLinear:      "linear",
+        .weekDeltaLabel:           "Δ vs last week",
+        .weekDeltaPctUp:           "+%d%% · cache %@",
+        .weekDeltaPctDown:         "%d%% · cache %@",
+        .weekDeltaCacheUp:         "+%d pp",
+        .weekDeltaCacheDown:       "%d pp",
+        .weekDeltaFirstWeek:       "first week",
+        .modelMixLabel:            "MODELS",
+        .modelMixOpus:             "opus",
+        .modelMixSonnet:           "sonnet",
+        .modelMixHaiku:            "haiku",
+        .modelMixUnknown:          "other",
+        .exportMenuItem:           "Export Usage…",
+        .exportSheetTitle:         "Export usage data",
+        .exportRangeLabel:         "Range",
+        .exportRangeToday:         "Today",
+        .exportRangeLast7d:        "Last 7 days",
+        .exportRangeLast30d:       "Last 30 days",
+        .exportRangeThisWeek:      "This week",
+        .exportRangeLastWeek:      "Last week",
+        .exportRangeCustom:        "Custom…",
+        .exportDimensionLabel:     "Dimension",
+        .exportDimRepoDaily:       "Per-repo · daily",
+        .exportDimToolDaily:       "Per-tool · daily",
+        .exportDimModelDaily:      "Per-model · daily",
+        .exportDimRaw:             "Raw events",
+        .exportFormatLabel:        "Format",
+        .exportButton:             "Export…",
+        .exportCancel:             "Cancel",
+        .exportDone:               "Saved to %@",
+        .kbExport:                 "export",
+
         .settingsGeneral: "General",
         .settingsNotifications: "Notifications",
         .settingsAbout: "About",
@@ -199,6 +286,45 @@ enum L10n {
         .kbRefresh: "刷新",
         .kbQuit: "退出",
         .footerEndEvents: "END · %@ 条事件",
+
+        .forecastBlockHits:        "块预计 %@ 触顶",
+        .forecastBlockSafe:        "块 · 安全",
+        .forecastWeeklyHits:       "本周预计 %@ 触顶",
+        .forecastConfidenceLow:    "低信心",
+        .forecastConfidenceMedium: "中等",
+        .forecastConfidenceHigh:   "高信心",
+        .forecastBasisEwma:        "EWMA",
+        .forecastBasisLinear:      "线性",
+        .weekDeltaLabel:           "Δ 对比上周",
+        .weekDeltaPctUp:           "+%d%% · 缓存 %@",
+        .weekDeltaPctDown:         "%d%% · 缓存 %@",
+        .weekDeltaCacheUp:         "+%d pp",
+        .weekDeltaCacheDown:       "%d pp",
+        .weekDeltaFirstWeek:       "首周",
+        .modelMixLabel:            "模型分布",
+        .modelMixOpus:             "opus",
+        .modelMixSonnet:           "sonnet",
+        .modelMixHaiku:            "haiku",
+        .modelMixUnknown:          "其他",
+        .exportMenuItem:           "导出用量…",
+        .exportSheetTitle:         "导出用量数据",
+        .exportRangeLabel:         "时间范围",
+        .exportRangeToday:         "今日",
+        .exportRangeLast7d:        "近 7 天",
+        .exportRangeLast30d:       "近 30 天",
+        .exportRangeThisWeek:      "本周",
+        .exportRangeLastWeek:      "上周",
+        .exportRangeCustom:        "自定义…",
+        .exportDimensionLabel:     "维度",
+        .exportDimRepoDaily:       "按仓库 · 日",
+        .exportDimToolDaily:       "按工具 · 日",
+        .exportDimModelDaily:      "按模型 · 日",
+        .exportDimRaw:             "原始事件",
+        .exportFormatLabel:        "格式",
+        .exportButton:             "导出…",
+        .exportCancel:             "取消",
+        .exportDone:               "已保存到 %@",
+        .kbExport:                 "导出",
 
         .settingsGeneral: "通用",
         .settingsNotifications: "通知",
