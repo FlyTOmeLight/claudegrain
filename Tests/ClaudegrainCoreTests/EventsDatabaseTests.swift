@@ -197,6 +197,38 @@ final class EventsDatabaseTests: XCTestCase {
         XCTAssertEqual(totals.totalTokens, 300, "duplicate dedup_key across files must be ignored")
     }
 
+    func testCostPerBucketReturnsContiguousFiveMinBuckets() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let anchor = Date(timeIntervalSince1970: 1_777_000_000)
+        // 0:00–0:05 → cost 0.10, 0:05–0:10 → 0, 0:10–0:15 → cost 0.30
+        let events = [
+            makeEvent(model: "claude-opus-4-7", inputTokens: 100,
+                      ts: anchor.addingTimeInterval(60)),                                 // bucket 0
+            makeEvent(model: "claude-opus-4-7", inputTokens: 300,
+                      ts: anchor.addingTimeInterval(11 * 60)),                            // bucket 2
+        ]
+        try await db.insertEvents(
+            events,
+            from: "/test.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 1, inode: 1, deviceId: 1, sizeAtLastRead: 1)
+        )
+
+        let buckets = try await db.costPerBucket(
+            start: anchor,
+            span: 15 * 60,
+            bucketSize: 5 * 60
+        )
+
+        XCTAssertEqual(buckets.count, 3)
+        XCTAssertGreaterThan(buckets[0].costUSD, 0)
+        XCTAssertEqual(buckets[1].costUSD, 0, accuracy: 0.0001)
+        XCTAssertGreaterThan(buckets[2].costUSD, 0)
+        XCTAssertGreaterThan(buckets[2].costUSD, buckets[0].costUSD)   // 300 input > 100 input
+        XCTAssertEqual(buckets[0].start, anchor)
+        XCTAssertEqual(buckets[2].end,   anchor.addingTimeInterval(15 * 60))
+    }
+
     private func makeEvent(
         model: String,
         inputTokens: Int = 0,

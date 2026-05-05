@@ -418,6 +418,41 @@ public actor EventsDatabase {
         return out
     }
 
+    /// Returns N contiguous buckets of width `bucketSize` over `[start, start+span)`,
+    /// zero-filled where there are no events. Used by `Forecaster` (ADR-0005).
+    public func costPerBucket(
+        start: Date,
+        span: TimeInterval,
+        bucketSize: TimeInterval
+    ) throws -> [CostBucket] {
+        precondition(bucketSize > 0)
+        precondition(span > 0)
+        let count = Int((span / bucketSize).rounded(.down))
+        guard count > 0 else { return [] }
+
+        let end = start.addingTimeInterval(span)
+        let rows: [Row] = try pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT ts, cost_usd
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                """, arguments: [start, end])
+        }
+
+        var sums = [Double](repeating: 0, count: count)
+        for r in rows {
+            guard let ts: Date = r["ts"], let cost: Double = r["cost_usd"] else { continue }
+            let idx = Int(ts.timeIntervalSince(start) / bucketSize)
+            guard idx >= 0, idx < count else { continue }
+            sums[idx] += cost
+        }
+
+        return (0..<count).map { i in
+            let bs = start.addingTimeInterval(Double(i) * bucketSize)
+            return CostBucket(start: bs, end: bs.addingTimeInterval(bucketSize), costUSD: sums[i])
+        }
+    }
+
     /// 7-day daily spend totals (USD) ending at `now`. Returns 7 values, oldest → newest.
     public func costPerDay(days: Int = 7, now: Date = .now, calendar: Calendar = .current) throws -> [Double] {
         var result = [Double](repeating: 0, count: days)
