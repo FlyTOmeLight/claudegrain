@@ -51,6 +51,14 @@ Initial public release.
 - Per-row 7d sparkline data is currently mocked client-side; live wiring to
   `EventsDatabase.tokensSince` ships in 0.2
 
+## [0.1.5-rc4] — 2026-05-05
+
+### Fixed
+- Boot stuck on "启动中" / blank session-block + weekly until manual F5.
+  `AppCoordinator.start()` now kicks an immediate `ingest.refreshNow()`
+  + `dataSource.refreshNow()` after stream wiring so the popover lands
+  on real values without the user having to refresh once.
+
 ## [0.1.5-rc3] — 2026-05-05
 
 ### Fixed

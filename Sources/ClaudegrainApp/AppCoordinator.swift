@@ -90,6 +90,13 @@ final class AppCoordinator {
                 self?.applyDataSourceSnapshot(snapshot)
             }
         }
+
+        // Kick an immediate OAuth + ingest poll so the popover shows real
+        // sessionBlock/weekly values without the user having to F5 once at boot.
+        Task { [ingest, dataSource] in
+            await ingest.refreshNow()
+            await dataSource.refreshNow()
+        }
     }
 
     func stop() async {
