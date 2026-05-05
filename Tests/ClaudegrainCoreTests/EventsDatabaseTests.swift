@@ -229,6 +229,58 @@ final class EventsDatabaseTests: XCTestCase {
         XCTAssertEqual(buckets[2].end,   anchor.addingTimeInterval(15 * 60))
     }
 
+    func testCostInWindowSumsCostsInRange() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let events = [
+            makeEvent(model: "claude-opus-4-7", inputTokens: 1_000_000, ts: now.addingTimeInterval(-100), sessionId: "before"),
+            makeEvent(model: "claude-opus-4-7", inputTokens: 2_000_000, ts: now,                          sessionId: "middle"),
+            makeEvent(model: "claude-opus-4-7", inputTokens: 3_000_000, ts: now.addingTimeInterval(100),  sessionId: "after"),
+        ]
+        try await db.insertEvents(
+            events,
+            from: "/test.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 3, inode: 1, deviceId: 1, sizeAtLastRead: 3)
+        )
+
+        let total = try await db.costInWindow(
+            start: now.addingTimeInterval(-50),
+            end:   now.addingTimeInterval(50)
+        )
+
+        // Only the middle event (at `now`) is in window.
+        let middleCost = CostCalculator.cost(for: events[1])
+        XCTAssertEqual(total, middleCost, accuracy: 0.0001)
+    }
+
+    func testCacheHitRateInWindow() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let event = makeEvent(
+            model: "claude-opus-4-7",
+            inputTokens: 100,
+            outputTokens: 0,
+            cacheCreationTokens: 50,
+            cacheReadTokens: 350,
+            ts: now
+        )
+        try await db.insertEvents(
+            [event],
+            from: "/test.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 1, inode: 1, deviceId: 1, sizeAtLastRead: 1)
+        )
+
+        let rate = try await db.cacheHitRateInWindow(
+            start: now.addingTimeInterval(-60),
+            end:   now.addingTimeInterval(60)
+        )
+
+        // cache_read / (input + cache_create + cache_read) = 350 / 500 = 0.70
+        XCTAssertEqual(rate, 0.70, accuracy: 0.0001)
+    }
+
     private func makeEvent(
         model: String,
         inputTokens: Int = 0,

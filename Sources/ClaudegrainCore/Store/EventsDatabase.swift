@@ -317,6 +317,38 @@ public actor EventsDatabase {
         }
     }
 
+    /// Sum `cost_usd` over the half-open interval `[start, end)`. 0 if no events.
+    public func costInWindow(start: Date, end: Date) throws -> Double {
+        try pool.read { db in
+            try Double.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(cost_usd), 0)
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                """, arguments: [start, end])
+        } ?? 0
+    }
+
+    /// `cache_read / (input + cache_create + cache_read)` over `[start, end)`.
+    /// Returns 0 if no qualifying tokens in window.
+    public func cacheHitRateInWindow(start: Date, end: Date) throws -> Double {
+        let row: Row? = try pool.read { db in
+            try Row.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(in_tok), 0)           AS in_t,
+                       COALESCE(SUM(cache_create_tok), 0) AS cc_t,
+                       COALESCE(SUM(cache_read_tok), 0)   AS cr_t
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                """, arguments: [start, end])
+        }
+        guard let row else { return 0 }
+        let input: Int64         = row["in_t"] ?? 0
+        let cacheCreation: Int64 = row["cc_t"] ?? 0
+        let cacheRead: Int64     = row["cr_t"] ?? 0
+        let denom = input + cacheCreation + cacheRead
+        guard denom > 0 else { return 0 }
+        return Double(cacheRead) / Double(denom)
+    }
+
     public func cacheHitRate(on day: Date, calendar: Calendar = .current) throws -> Double {
         let (start, end) = Self.dayBounds(day, calendar: calendar)
         return try pool.read { db in
