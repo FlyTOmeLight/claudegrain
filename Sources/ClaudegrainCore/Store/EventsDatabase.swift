@@ -415,6 +415,37 @@ public actor EventsDatabase {
         return out
     }
 
+    public func perRepoDaily(since: Date, until: Date) throws -> [(date: String, repo: String, events: Int, input: Int64, output: Int64, cacheRead: Int64, cacheCreation: Int64, cost: Double)] {
+        let rows: [Row] = try pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT
+                  strftime('%Y-%m-%d', ts) AS d,
+                  COALESCE(cwd, '')        AS repo,
+                  COUNT(*)                 AS n,
+                  SUM(in_tok)              AS in_t,
+                  SUM(out_tok)             AS out_t,
+                  SUM(cache_read_tok)      AS cr_t,
+                  SUM(cache_create_tok)    AS cc_t,
+                  SUM(cost_usd)            AS cost
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                GROUP BY d, repo
+                ORDER BY d ASC, repo ASC
+                """, arguments: [since, until])
+        }
+        return rows.map { r -> (date: String, repo: String, events: Int, input: Int64, output: Int64, cacheRead: Int64, cacheCreation: Int64, cost: Double) in
+            let d: String = r["d"] ?? ""
+            let repo: String = r["repo"] ?? ""
+            let n: Int64 = r["n"] ?? 0
+            let inT: Int64 = r["in_t"] ?? 0
+            let outT: Int64 = r["out_t"] ?? 0
+            let crT: Int64 = r["cr_t"] ?? 0
+            let ccT: Int64 = r["cc_t"] ?? 0
+            let cost: Double = r["cost"] ?? 0
+            return (date: d, repo: repo, events: Int(n), input: inT, output: outT, cacheRead: crT, cacheCreation: ccT, cost: cost)
+        }
+    }
+
     /// Sum tokens grouped by `ModelFamily` over the half-open interval [since, until).
     /// Returns a per-channel `TokenBreakdown` (input/output/cacheCreation/cacheRead).
     /// Family grouping happens in Swift (ADR-0006); SQL just sums per raw model id.

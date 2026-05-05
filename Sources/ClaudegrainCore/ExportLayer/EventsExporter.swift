@@ -39,10 +39,23 @@ public struct EventsExporter: Sendable {
     private func csvPayload(range: DateInterval, dimension: ExportDimension) async throws -> String {
         var out = csvHeader(range: range, dimension: dimension)
         switch dimension {
-        case .perRepoDaily, .perToolDaily, .perModelDaily, .rawEvents:
-            out += "" // placeholder; per-dimension implementations land in Tasks 2-5
+        case .perRepoDaily:
+            out += "date,repo,events,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cost_usd\n"
+            let rows = try await db.perRepoDaily(since: range.start, until: range.end)
+            for r in rows {
+                out += "\(r.date),\(csvEscape(r.repo)),\(r.events),\(r.input),\(r.output),\(r.cacheRead),\(r.cacheCreation),\(String(format: "%.4f", r.cost))\n"
+            }
+        case .perToolDaily, .perModelDaily, .rawEvents:
+            out += "" // landed in Tasks 3, 4, 5
         }
         return out
+    }
+
+    private func csvEscape(_ s: String) -> String {
+        if s.contains(",") || s.contains("\"") || s.contains("\n") {
+            return "\"" + s.replacingOccurrences(of: "\"", with: "\"\"") + "\""
+        }
+        return s
     }
 
     private func csvHeader(range: DateInterval, dimension: ExportDimension) -> String {
