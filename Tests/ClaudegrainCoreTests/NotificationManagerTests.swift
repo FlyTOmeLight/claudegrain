@@ -106,9 +106,10 @@ final class NotificationManagerTests: XCTestCase {
     func testRepoOverspendFiresPerRepoPerDay() {
         let (_, prefs) = makePrefs()
         prefs.notifyRepoOverspend = true
-        prefs.repoOverspendThresholdUSD = 5.0
+        let budgets = BudgetStore(defaults: UserDefaults(suiteName: "rospd-\(UUID().uuidString)")!)
+        budgets.globalDefaultDailyUSD = 5.0
         var fired: [(NotificationKind, String)] = []
-        let mgr = NotificationManager(prefs: prefs) { kind, title, _ in fired.append((kind, title)) }
+        let mgr = NotificationManager(prefs: prefs, budgets: budgets) { kind, title, _ in fired.append((kind, title)) }
 
         let repos = [
             RepoBreakdown(repo: "a", fullCwd: "/a", costUSD: 6.0, totalTokens: 0),
@@ -173,6 +174,31 @@ final class NotificationManagerTests: XCTestCase {
         ))
 
         XCTAssertTrue(fired.isEmpty)
+    }
+
+    func testRepoOverspendUsesPerRepoBudget() {
+        var fired: [(NotificationKind, String)] = []
+        let prefs = Preferences(defaults: UserDefaults(suiteName: "ros-\(UUID().uuidString)")!)
+        prefs.notifyRepoOverspend = true
+
+        let budgets = BudgetStore(defaults: UserDefaults(suiteName: "ros-budgets-\(UUID().uuidString)")!)
+        budgets.globalDefaultDailyUSD = 100.0   // very high default
+        budgets.setBudget(repo: "/tight", daily: 1.0, weekly: nil)
+
+        let mgr = NotificationManager(prefs: prefs, budgets: budgets) { kind, _, body in
+            fired.append((kind, body))
+        }
+
+        let topRepos: [RepoBreakdown] = [
+            RepoBreakdown(repo: "/tight", fullCwd: "/tight", costUSD: 5.0, totalTokens: 1),
+            RepoBreakdown(repo: "/loose", fullCwd: "/loose", costUSD: 50.0, totalTokens: 1),
+        ]
+
+        mgr.evaluateUsage(session: nil, weekly: nil, topRepos: topRepos)
+
+        XCTAssertEqual(fired.count, 1, "/tight should fire (5.0 > 1.0); /loose stays under 100.0")
+        XCTAssertEqual(fired.first?.0, .repoOverspend)
+        XCTAssertTrue(fired.first?.1.contains("/tight") ?? false)
     }
 
     func testPreferencesPersistAcrossInstances() {

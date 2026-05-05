@@ -16,6 +16,7 @@ final class NotificationManager {
     typealias Handler = (NotificationKind, String, String) -> Void
 
     private let prefs: Preferences
+    private let budgets: BudgetStore
     private let handler: Handler
     private let usesSystemCenter: Bool
     private var lastFiredBySessionStart: [Date: Set<NotificationKind>] = [:]
@@ -25,8 +26,13 @@ final class NotificationManager {
     private var repoOverspendFired: Set<RepoOverspendKey> = []
     private var authRequested = false
 
-    init(prefs: Preferences? = nil, handler: Handler? = nil) {
+    init(
+        prefs: Preferences? = nil,
+        budgets: BudgetStore? = nil,
+        handler: Handler? = nil
+    ) {
         self.prefs = prefs ?? .shared
+        self.budgets = budgets ?? BudgetStore()
         if let handler {
             self.handler = handler
             self.usesSystemCenter = false
@@ -90,13 +96,14 @@ final class NotificationManager {
     }
 
     private func checkRepoOverspend(_ topRepos: [RepoBreakdown]) {
-        let threshold = prefs.repoOverspendThresholdUSD
-        for repo in topRepos.prefix(5) where repo.costUSD >= threshold {
+        for repo in topRepos.prefix(5) {
+            let budget = budgets.resolve(repo: repo.id)
+            guard let dailyLimit = budget.dailyUSD, repo.costUSD >= dailyLimit else { continue }
             let key = RepoOverspendKey(date: Calendar.current.startOfDay(for: Date()), repo: repo.id)
             guard !repoOverspendFired.contains(key) else { continue }
             fire(.repoOverspend,
                  title: "Repo over budget · \(repo.repo)",
-                 body: "Today $\(String(format: "%.2f", repo.costUSD)) ≥ threshold $\(String(format: "%.2f", threshold))")
+                 body: "\(repo.id): today $\(String(format: "%.2f", repo.costUSD)) ≥ budget $\(String(format: "%.2f", dailyLimit))")
             repoOverspendFired.insert(key)
         }
     }

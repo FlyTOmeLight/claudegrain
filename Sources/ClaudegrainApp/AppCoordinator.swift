@@ -18,6 +18,7 @@ final class AppCoordinator {
 
     /// Exposed so menu / popover entry points can present the export sheet.
     let exporter: EventsExporter
+    let budgets: BudgetStore
     private var exportWindow: NSWindow?
 
     init(
@@ -33,7 +34,12 @@ final class AppCoordinator {
         }
         self.ingest = IngestActor(db: db)
         self.dataSource = DataSourceCoordinator()
-        self.notifications = notifications ?? NotificationManager(prefs: model.preferences)
+
+        let store = BudgetStore()
+        store.migrateLegacyKeyIfNeeded()
+        self.budgets = store
+
+        self.notifications = notifications ?? NotificationManager(prefs: model.preferences, budgets: store)
         self.exporter = EventsExporter(db: self.db)
     }
 
