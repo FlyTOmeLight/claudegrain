@@ -36,6 +36,7 @@ final class JSONLParserTests: XCTestCase {
         XCTAssertEqual(event.cacheReadTokens, 17220)
         XCTAssertEqual(event.cwd, "/Users/moonlight/new/prism-endpoint")
         XCTAssertEqual(event.tools, ["mcp__plugin_claude-mem_mcp-search__get_observations"])
+        XCTAssertEqual(event.modelFamily, .opus)
     }
 
     func testIgnoresUserAndSystemEvents() {
