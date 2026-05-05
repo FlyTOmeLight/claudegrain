@@ -51,8 +51,16 @@ public struct EventsExporter: Sendable {
             for r in rows {
                 out += "\(r.date),\(csvEscape(r.tool)),\(r.events),\(r.input),\(r.output),\(String(format: "%.4f", r.cost))\n"
             }
-        case .perModelDaily, .rawEvents:
-            out += "" // landed in Tasks 4, 5
+        case .perModelDaily:
+            out += "date,model_family,model_id,events,input_tokens,output_tokens,cost_usd\n"
+            let rows = try await db.perModelDaily(since: range.start, until: range.end)
+            for r in rows {
+                let fam = ModelFamily.parse(r.modelId)
+                let famStr = String(describing: fam)   // "opus" / "sonnet" / "haiku" / "unknown"
+                out += "\(r.date),\(famStr),\(csvEscape(r.modelId)),\(r.events),\(r.input),\(r.output),\(String(format: "%.4f", r.cost))\n"
+            }
+        case .rawEvents:
+            out += "" // landed in Task 5
         }
         return out
     }

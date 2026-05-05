@@ -85,4 +85,34 @@ final class EventsExporterTests: XCTestCase {
         XCTAssertTrue(csv.contains(",Bash,1,100,"))
         XCTAssertTrue(csv.contains(",Edit,1,200,"))
     }
+
+    func testPerModelDailyCSV() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).db")
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let events = [
+            UsageEvent(timestamp: now, sessionId: "s", cwd: "/a", gitBranch: nil,
+                       model: "claude-opus-4-7", tools: [],
+                       inputTokens: 100, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0),
+            UsageEvent(timestamp: now, sessionId: "s", cwd: "/a", gitBranch: nil,
+                       model: "claude-sonnet-4-6", tools: [],
+                       inputTokens: 500, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0),
+        ]
+        try await db.insertEvents(events, from: "/test.jsonl", startingAt: 0, cursor: JSONLReader.Cursor())
+
+        let exporter = EventsExporter(db: db)
+        let outURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).csv")
+        try await exporter.export(
+            range: DateInterval(start: now.addingTimeInterval(-3600), end: now.addingTimeInterval(3600)),
+            dimension: .perModelDaily, format: .csv, to: outURL
+        )
+
+        let csv = try String(contentsOf: outURL, encoding: .utf8)
+        XCTAssertTrue(csv.contains("Dimension: per-model daily"))
+        XCTAssertTrue(csv.contains("date,model_family,model_id,events,input_tokens,output_tokens,cost_usd"))
+        XCTAssertTrue(csv.contains(",opus,claude-opus-4-7,1,100,"))
+        XCTAssertTrue(csv.contains(",sonnet,claude-sonnet-4-6,1,500,"))
+    }
 }

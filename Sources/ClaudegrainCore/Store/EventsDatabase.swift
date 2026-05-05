@@ -473,6 +473,33 @@ public actor EventsDatabase {
         }
     }
 
+    public func perModelDaily(since: Date, until: Date) throws -> [(date: String, modelId: String, events: Int, input: Int64, output: Int64, cost: Double)] {
+        let rows: [Row] = try pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT
+                  strftime('%Y-%m-%d', ts) AS d,
+                  model                    AS m,
+                  COUNT(*)                 AS n,
+                  SUM(in_tok)              AS in_t,
+                  SUM(out_tok)             AS out_t,
+                  SUM(cost_usd)            AS cost
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                GROUP BY d, m
+                ORDER BY d ASC, m ASC
+                """, arguments: [since, until])
+        }
+        return rows.map { (r: Row) -> (date: String, modelId: String, events: Int, input: Int64, output: Int64, cost: Double) in
+            let d: String     = r["d"] ?? ""
+            let m: String     = r["m"] ?? ""
+            let n: Int64      = r["n"] ?? 0
+            let inTok: Int64  = r["in_t"] ?? 0
+            let outTok: Int64 = r["out_t"] ?? 0
+            let cost: Double  = r["cost"] ?? 0
+            return (d, m, Int(n), inTok, outTok, cost)
+        }
+    }
+
     /// Sum tokens grouped by `ModelFamily` over the half-open interval [since, until).
     /// Returns a per-channel `TokenBreakdown` (input/output/cacheCreation/cacheRead).
     /// Family grouping happens in Swift (ADR-0006); SQL just sums per raw model id.
