@@ -51,4 +51,34 @@ final class BudgetStoreTests: XCTestCase {
         XCTAssertNil(store.allBudgets["/a"])
         XCTAssertEqual(store.resolve(repo: "/a").dailyUSD, store.globalDefaultDailyUSD)
     }
+
+    func testMigratesLegacyRepoOverspendThreshold() {
+        let defaults = makeDefaults()
+        defaults.set(15.0, forKey: "repoOverspendThresholdUSD")
+
+        let store = BudgetStore(defaults: defaults)
+        store.migrateLegacyKeyIfNeeded()
+
+        XCTAssertEqual(store.globalDefaultDailyUSD, 15.0, accuracy: 0.001)
+        XCTAssertNil(defaults.object(forKey: "repoOverspendThresholdUSD"),
+                     "legacy key should be removed after migration")
+    }
+
+    func testMigrationIsIdempotent() {
+        let defaults = makeDefaults()
+        defaults.set(15.0, forKey: "repoOverspendThresholdUSD")
+
+        let s1 = BudgetStore(defaults: defaults)
+        s1.migrateLegacyKeyIfNeeded()
+        // Second call must not overwrite a user-set new-key value.
+        s1.globalDefaultDailyUSD = 8.0
+        s1.migrateLegacyKeyIfNeeded()
+        XCTAssertEqual(s1.globalDefaultDailyUSD, 8.0)
+    }
+
+    func testMigrationDoesNothingWithoutLegacyKey() {
+        let store = BudgetStore(defaults: makeDefaults())
+        store.migrateLegacyKeyIfNeeded()
+        XCTAssertEqual(store.globalDefaultDailyUSD, 10.0)
+    }
 }

@@ -57,6 +57,20 @@ public final class BudgetStore: ObservableObject {
         return RepoBudget(repo: repo, dailyUSD: globalDefaultDailyUSD, weeklyUSD: nil)
     }
 
+    /// One-shot migration from 0.1.x's single `repoOverspendThresholdUSD`
+    /// double value to `globalDefaultDailyUSD`. Removes the legacy key after
+    /// reading. Idempotent.
+    public func migrateLegacyKeyIfNeeded() {
+        let legacyKey = "repoOverspendThresholdUSD"
+        guard defaults.object(forKey: legacyKey) != nil else { return }
+        let legacyValue = defaults.double(forKey: legacyKey)
+        // Only adopt the legacy value if the user hasn't already set the new key.
+        if defaults.object(forKey: Self.globalDailyKey) == nil {
+            defaults.set(legacyValue, forKey: Self.globalDailyKey)
+        }
+        defaults.removeObject(forKey: legacyKey)
+    }
+
     private func save() {
         guard let data = try? JSONEncoder().encode(allBudgets) else { return }
         defaults.set(data, forKey: Self.budgetsKey)
