@@ -72,12 +72,61 @@ public actor Forecaster {
                 remainingSeconds: remainingSeconds
             )
         }
-        // EWMA branch — Task 8.
-        return linearForecast(
+        return ewmaForecast(
             usedFraction: usedFraction,
             elapsedSeconds: elapsedSeconds,
-            remainingSeconds: remainingSeconds
+            remainingSeconds: remainingSeconds,
+            buckets: recent
         )
+    }
+
+    /// EWMA over per-bucket cost (oldest → newest). α = 0.4.
+    /// Smooths the recent burn rate and projects forward to predict hit time.
+    private func ewmaForecast(
+        usedFraction: Double,
+        elapsedSeconds: Double,
+        remainingSeconds: Double,
+        buckets: [CostBucket]
+    ) -> ForecastResult {
+        let alpha = 0.4
+        var ewmaCost = buckets[0].costUSD
+        for bucket in buckets.dropFirst() {
+            ewmaCost = alpha * bucket.costUSD + (1 - alpha) * ewmaCost
+        }
+        let bucketSize = buckets[0].end.timeIntervalSince(buckets[0].start)
+        guard bucketSize > 0, elapsedSeconds > 0, usedFraction > 0 else {
+            return ForecastResult(willHit: false, hitAt: nil, confidence: .low, basis: .ewma)
+        }
+
+        // ewmaCost = smoothed cost-per-bucket (dollars). The user's plan-tier $/budget
+        // is implicit. We translate cost-per-bucket → fraction-per-second by anchoring
+        // on the realized rate over the elapsed window:
+        //     historicalFractionPerCost = usedFraction / sumCost   (fraction per $1)
+        //     smoothedFractionPerSecond = ewmaCost * historicalFractionPerCost / bucketSize
+        let sumCost = buckets.reduce(0) { $0 + $1.costUSD }
+        guard sumCost > 0 else {
+            return ForecastResult(willHit: false, hitAt: nil, confidence: .low, basis: .ewma)
+        }
+        let smoothedFractionPerSecond = (ewmaCost * (usedFraction / sumCost)) / bucketSize
+
+        guard smoothedFractionPerSecond > 0 else {
+            return ForecastResult(willHit: false, hitAt: nil, confidence: .low, basis: .ewma)
+        }
+        let secondsToHit = (1.0 - usedFraction) / smoothedFractionPerSecond
+        let hits = secondsToHit > 0 && secondsToHit <= remainingSeconds
+
+        return ForecastResult(
+            willHit: hits,
+            hitAt: hits ? Date().addingTimeInterval(secondsToHit) : nil,
+            confidence: confidenceFor(bucketCount: buckets.count),
+            basis: .ewma
+        )
+    }
+
+    private func confidenceFor(bucketCount n: Int) -> ForecastResult.Confidence {
+        if n >= 10 { return .high }
+        if n >= 5  { return .medium }
+        return .low
     }
 
     private func linearForecast(
