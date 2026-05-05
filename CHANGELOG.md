@@ -51,6 +51,36 @@ Initial public release.
 - Per-row 7d sparkline data is currently mocked client-side; live wiring to
   `EventsDatabase.tokensSince` ships in 0.2
 
+## [0.1.3] — 2026-05-05
+
+### Added
+- **TOTAL / TODAY hero tabs** — clickable toggle in the popover header
+  switches the headline figure between all-time spend and today's spend.
+  Backed by new `EventsDatabase.allTimeTotals()` SQL aggregation; published
+  through `IngestActor.Snapshot.allTime` to `AppModel.allTimeTotals`.
+- **F5 refresh spinner** — rotating ↻ glyph bound to `model.isRefreshing`
+  with a 600ms minimum visible duration so the user perceives a real
+  refresh pulse even when the snapshot returns instantly.
+- **Internationalization (English / 中文)** — full `Localization.swift`
+  string table covers every visible label, section header, button, status
+  and Settings field. Language picker added to Settings → General;
+  preference persists in UserDefaults; live re-render on switch.
+- **Fixed (non-scroll) layout mode** — Settings → General → Layout toggle.
+  Fixed mode drops the SubtotalsBlock so the receipt fits an HD screen
+  without scrolling; popover height clamps to `NSScreen.visibleFrame`
+  height as a safety net.
+- `NSHostingController.sizingOptions = .preferredContentSize` + KVO so
+  the popover height tracks the SwiftUI intrinsic content size in fixed
+  mode (no manual NSSize math).
+- `AppModel` forwards `Preferences.objectWillChange` so Settings changes
+  propagate to the popover and menu bar label without restart.
+
+### Fixed
+- F2 settings re-open on `LSUIElement` apps — `sendAction(showSettingsWindow:)`
+  alone failed to re-key the window after the user closed it once. Now
+  walks `NSApp.windows` after the selector fires and brings the settings
+  window forward explicitly.
+
 ## [0.1.2] — 2026-05-05
 
 ### Added
