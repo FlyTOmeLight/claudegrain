@@ -96,6 +96,16 @@ private struct ReceiptBody: View {
 
             HeroSpend(yesterdayCost: 7.5)
 
+            // NEW: forecast badge for the 5h block (rendered below hero)
+            if model.forecastBlock?.basis != .insufficient {
+                ForecastBadge(forecast: model.forecastBlock, labelKey: .forecastBlockHits)
+                    .padding(.top, 2)
+            }
+
+            DashedDivider()
+
+            // NEW: week delta row (B3)
+            WeekDeltaRow(delta: model.weekDelta)
             DashedDivider()
 
             SectionHeader(label: model.t(.sectionUsageLimits))
@@ -130,6 +140,10 @@ private struct ReceiptBody: View {
 
             SectionHeader(label: model.t(.sectionTopCosts))
             TopCostsList()
+
+            // NEW: model mix row (A1)
+            DashedDivider()
+            ModelMixRow(mix: model.modelMix)
 
             DoubleDivider()
 
