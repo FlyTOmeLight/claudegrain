@@ -96,6 +96,86 @@ final class EventsDatabaseTests: XCTestCase {
         XCTAssertEqual(totals.totalTokens, 30, "second insert at same (file, offset) should be ignored")
     }
 
+    func testCostPerModelGroupsByFamily() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let opus = makeEvent(model: "claude-opus-4-7", inputTokens: 1_000_000, ts: now)
+        let sonnet1 = makeEvent(model: "claude-sonnet-4-6", inputTokens: 1_000_000, ts: now, sessionId: "s1")
+        let sonnet2 = makeEvent(model: "claude-sonnet-4-6", inputTokens: 500_000, ts: now, sessionId: "s2")
+        let expectedOpus = CostCalculator.cost(for: opus)
+        let expectedSonnet = CostCalculator.cost(for: sonnet1) + CostCalculator.cost(for: sonnet2)
+
+        try await db.insertEvents(
+            [opus, sonnet1, sonnet2],
+            from: "/tmp/cpm-family.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 3, inode: 1, deviceId: 1, sizeAtLastRead: 3)
+        )
+
+        let map = try await db.costPerModel(
+            since: now.addingTimeInterval(-60),
+            until: now.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(map[.opus] ?? 0, expectedOpus, accuracy: 0.0001)
+        XCTAssertEqual(map[.sonnet] ?? 0, expectedSonnet, accuracy: 0.0001)
+        XCTAssertNil(map[.haiku])
+    }
+
+    func testTokensPerModelSumsAllChannels() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let event = makeEvent(
+            model: "claude-opus-4-7",
+            inputTokens: 100,
+            outputTokens: 200,
+            cacheCreationTokens: 1000,
+            cacheReadTokens: 5000,
+            ts: now
+        )
+        try await db.insertEvents(
+            [event],
+            from: "/tmp/tpm.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 1, inode: 1, deviceId: 1, sizeAtLastRead: 1)
+        )
+
+        let map = try await db.tokensPerModel(
+            since: now.addingTimeInterval(-60),
+            until: now.addingTimeInterval(60)
+        )
+
+        let opus = try XCTUnwrap(map[.opus])
+        XCTAssertEqual(opus.input, 100)
+        XCTAssertEqual(opus.output, 200)
+        XCTAssertEqual(opus.cacheCreation, 1000)
+        XCTAssertEqual(opus.cacheRead, 5000)
+        XCTAssertEqual(opus.total, 6300)
+    }
+
+    func testCostPerModelHonorsTimeWindow() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let yesterday = now.addingTimeInterval(-86_400)
+        let stale = makeEvent(model: "claude-opus-4-7", inputTokens: 9_000_000, ts: yesterday, sessionId: "stale")
+        let fresh = makeEvent(model: "claude-opus-4-7", inputTokens: 1_000_000, ts: now, sessionId: "fresh")
+        let expectedFresh = CostCalculator.cost(for: fresh)
+
+        try await db.insertEvents(
+            [stale, fresh],
+            from: "/tmp/cpm-window.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 2, inode: 2, deviceId: 1, sizeAtLastRead: 2)
+        )
+
+        let map = try await db.costPerModel(
+            since: now.addingTimeInterval(-3600),
+            until: now.addingTimeInterval(60)
+        )
+
+        XCTAssertEqual(map[.opus] ?? 0, expectedFresh, accuracy: 0.0001)
+    }
+
     /// Same logical assistant turn replayed in two distinct jsonl files
     /// (parent + sidechain). With a real `dedup_key` the second one is skipped.
     func testDedupAcrossSourceFiles() async throws {
@@ -115,5 +195,114 @@ final class EventsDatabaseTests: XCTestCase {
 
         let totals = try await db.dailyTotals(on: Date())
         XCTAssertEqual(totals.totalTokens, 300, "duplicate dedup_key across files must be ignored")
+    }
+
+    func testCostPerBucketReturnsContiguousFiveMinBuckets() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let anchor = Date(timeIntervalSince1970: 1_777_000_000)
+        // 0:00–0:05 → cost 0.10, 0:05–0:10 → 0, 0:10–0:15 → cost 0.30
+        let events = [
+            makeEvent(model: "claude-opus-4-7", inputTokens: 100,
+                      ts: anchor.addingTimeInterval(60)),                                 // bucket 0
+            makeEvent(model: "claude-opus-4-7", inputTokens: 300,
+                      ts: anchor.addingTimeInterval(11 * 60)),                            // bucket 2
+        ]
+        try await db.insertEvents(
+            events,
+            from: "/test.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 1, inode: 1, deviceId: 1, sizeAtLastRead: 1)
+        )
+
+        let buckets = try await db.costPerBucket(
+            start: anchor,
+            span: 15 * 60,
+            bucketSize: 5 * 60
+        )
+
+        XCTAssertEqual(buckets.count, 3)
+        XCTAssertGreaterThan(buckets[0].costUSD, 0)
+        XCTAssertEqual(buckets[1].costUSD, 0, accuracy: 0.0001)
+        XCTAssertGreaterThan(buckets[2].costUSD, 0)
+        XCTAssertGreaterThan(buckets[2].costUSD, buckets[0].costUSD)   // 300 input > 100 input
+        XCTAssertEqual(buckets[0].start, anchor)
+        XCTAssertEqual(buckets[2].end,   anchor.addingTimeInterval(15 * 60))
+    }
+
+    func testCostInWindowSumsCostsInRange() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let events = [
+            makeEvent(model: "claude-opus-4-7", inputTokens: 1_000_000, ts: now.addingTimeInterval(-100), sessionId: "before"),
+            makeEvent(model: "claude-opus-4-7", inputTokens: 2_000_000, ts: now,                          sessionId: "middle"),
+            makeEvent(model: "claude-opus-4-7", inputTokens: 3_000_000, ts: now.addingTimeInterval(100),  sessionId: "after"),
+        ]
+        try await db.insertEvents(
+            events,
+            from: "/test.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 3, inode: 1, deviceId: 1, sizeAtLastRead: 3)
+        )
+
+        let total = try await db.costInWindow(
+            start: now.addingTimeInterval(-50),
+            end:   now.addingTimeInterval(50)
+        )
+
+        // Only the middle event (at `now`) is in window.
+        let middleCost = CostCalculator.cost(for: events[1])
+        XCTAssertEqual(total, middleCost, accuracy: 0.0001)
+    }
+
+    func testCacheHitRateInWindow() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let event = makeEvent(
+            model: "claude-opus-4-7",
+            inputTokens: 100,
+            outputTokens: 0,
+            cacheCreationTokens: 50,
+            cacheReadTokens: 350,
+            ts: now
+        )
+        try await db.insertEvents(
+            [event],
+            from: "/test.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 1, inode: 1, deviceId: 1, sizeAtLastRead: 1)
+        )
+
+        let rate = try await db.cacheHitRateInWindow(
+            start: now.addingTimeInterval(-60),
+            end:   now.addingTimeInterval(60)
+        )
+
+        // cache_read / (input + cache_create + cache_read) = 350 / 500 = 0.70
+        XCTAssertEqual(rate, 0.70, accuracy: 0.0001)
+    }
+
+    private func makeEvent(
+        model: String,
+        inputTokens: Int = 0,
+        outputTokens: Int = 0,
+        cacheCreationTokens: Int = 0,
+        cacheReadTokens: Int = 0,
+        ts: Date,
+        sessionId: String = "s",
+        cwd: String? = "/repo",
+        tools: [String] = []
+    ) -> UsageEvent {
+        UsageEvent(
+            timestamp: ts,
+            sessionId: sessionId,
+            cwd: cwd,
+            gitBranch: nil,
+            model: model,
+            tools: tools,
+            inputTokens: inputTokens,
+            outputTokens: outputTokens,
+            cacheCreationTokens: cacheCreationTokens,
+            cacheReadTokens: cacheReadTokens
+        )
     }
 }

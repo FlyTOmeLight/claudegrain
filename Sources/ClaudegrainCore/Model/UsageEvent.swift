@@ -61,6 +61,9 @@ public struct UsageEvent: Equatable, Sendable {
     /// tool_use block. Returns nil for non-tool turns (final assistant text).
     public var primaryTool: String? { tools.first }
 
+    /// Family grouping derived from `model`. ADR-0006: grouped in Swift, not SQL.
+    public var modelFamily: ModelFamily { ModelFamily.parse(model) }
+
     /// MCP server when primaryTool is an MCP call, else nil.
     public var primaryMcpServer: String? {
         primaryTool?.mcpComponents()?.server

@@ -1,6 +1,20 @@
 import Foundation
 import GRDB
 
+public struct TokenBreakdown: Equatable, Sendable {
+    public let input: Int
+    public let output: Int
+    public let cacheCreation: Int
+    public let cacheRead: Int
+    public init(input: Int, output: Int, cacheCreation: Int, cacheRead: Int) {
+        self.input = input
+        self.output = output
+        self.cacheCreation = cacheCreation
+        self.cacheRead = cacheRead
+    }
+    public var total: Int { input + output + cacheCreation + cacheRead }
+}
+
 public actor EventsDatabase {
     public static let defaultDirectory: URL = {
         let support = try! FileManager.default.url(
@@ -303,6 +317,38 @@ public actor EventsDatabase {
         }
     }
 
+    /// Sum `cost_usd` over the half-open interval `[start, end)`. 0 if no events.
+    public func costInWindow(start: Date, end: Date) throws -> Double {
+        try pool.read { db in
+            try Double.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(cost_usd), 0)
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                """, arguments: [start, end])
+        } ?? 0
+    }
+
+    /// `cache_read / (input + cache_create + cache_read)` over `[start, end)`.
+    /// Returns 0 if no qualifying tokens in window.
+    public func cacheHitRateInWindow(start: Date, end: Date) throws -> Double {
+        let row: Row? = try pool.read { db in
+            try Row.fetchOne(db, sql: """
+                SELECT COALESCE(SUM(in_tok), 0)           AS in_t,
+                       COALESCE(SUM(cache_create_tok), 0) AS cc_t,
+                       COALESCE(SUM(cache_read_tok), 0)   AS cr_t
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                """, arguments: [start, end])
+        }
+        guard let row else { return 0 }
+        let input: Int64         = row["in_t"] ?? 0
+        let cacheCreation: Int64 = row["cc_t"] ?? 0
+        let cacheRead: Int64     = row["cr_t"] ?? 0
+        let denom = input + cacheCreation + cacheRead
+        guard denom > 0 else { return 0 }
+        return Double(cacheRead) / Double(denom)
+    }
+
     public func cacheHitRate(on day: Date, calendar: Calendar = .current) throws -> Double {
         let (start, end) = Self.dayBounds(day, calendar: calendar)
         return try pool.read { db in
@@ -346,6 +392,96 @@ public actor EventsDatabase {
     public func purgeOlderThan(_ cutoff: Date) throws {
         try pool.write { db in
             try db.execute(sql: "DELETE FROM events WHERE ts < ?", arguments: [cutoff])
+        }
+    }
+
+    /// Sum cost grouped by `ModelFamily` over the half-open interval [since, until).
+    /// Family grouping happens in Swift (ADR-0006); SQL just sums per raw model id.
+    public func costPerModel(since: Date, until: Date) throws -> [ModelFamily: Double] {
+        let rows: [(model: String, cost: Double)] = try pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT model, COALESCE(SUM(cost_usd), 0) AS s
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                GROUP BY model
+                """, arguments: [since, until])
+                .map { (model: $0["model"] ?? "", cost: $0["s"] ?? 0.0) }
+        }
+
+        var out: [ModelFamily: Double] = [:]
+        for r in rows {
+            out[ModelFamily.parse(r.model), default: 0] += r.cost
+        }
+        return out
+    }
+
+    /// Sum tokens grouped by `ModelFamily` over the half-open interval [since, until).
+    /// Returns a per-channel `TokenBreakdown` (input/output/cacheCreation/cacheRead).
+    /// Family grouping happens in Swift (ADR-0006); SQL just sums per raw model id.
+    public func tokensPerModel(since: Date, until: Date) throws -> [ModelFamily: TokenBreakdown] {
+        let rows: [Row] = try pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT model,
+                       COALESCE(SUM(in_tok), 0)           AS in_t,
+                       COALESCE(SUM(out_tok), 0)          AS out_t,
+                       COALESCE(SUM(cache_create_tok), 0) AS cc_t,
+                       COALESCE(SUM(cache_read_tok), 0)   AS cr_t
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                GROUP BY model
+                """, arguments: [since, until])
+        }
+
+        var out: [ModelFamily: TokenBreakdown] = [:]
+        for r in rows {
+            let fam = ModelFamily.parse(r["model"] ?? "")
+            let prior = out[fam] ?? TokenBreakdown(input: 0, output: 0, cacheCreation: 0, cacheRead: 0)
+            let inT  = Int(r["in_t"]  as Int64? ?? 0)
+            let outT = Int(r["out_t"] as Int64? ?? 0)
+            let ccT  = Int(r["cc_t"]  as Int64? ?? 0)
+            let crT  = Int(r["cr_t"]  as Int64? ?? 0)
+            out[fam] = TokenBreakdown(
+                input:         prior.input         + inT,
+                output:        prior.output        + outT,
+                cacheCreation: prior.cacheCreation + ccT,
+                cacheRead:     prior.cacheRead     + crT
+            )
+        }
+        return out
+    }
+
+    /// Returns N contiguous buckets of width `bucketSize` over `[start, start+span)`,
+    /// zero-filled where there are no events. Used by `Forecaster` (ADR-0005).
+    public func costPerBucket(
+        start: Date,
+        span: TimeInterval,
+        bucketSize: TimeInterval
+    ) throws -> [CostBucket] {
+        precondition(bucketSize > 0)
+        precondition(span > 0)
+        let count = Int((span / bucketSize).rounded(.down))
+        guard count > 0 else { return [] }
+
+        let end = start.addingTimeInterval(span)
+        let rows: [Row] = try pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT ts, cost_usd
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                """, arguments: [start, end])
+        }
+
+        var sums = [Double](repeating: 0, count: count)
+        for r in rows {
+            guard let ts: Date = r["ts"], let cost: Double = r["cost_usd"] else { continue }
+            let idx = Int(ts.timeIntervalSince(start) / bucketSize)
+            guard idx >= 0, idx < count else { continue }
+            sums[idx] += cost
+        }
+
+        return (0..<count).map { i in
+            let bs = start.addingTimeInterval(Double(i) * bucketSize)
+            return CostBucket(start: bs, end: bs.addingTimeInterval(bucketSize), costUSD: sums[i])
         }
     }
 
