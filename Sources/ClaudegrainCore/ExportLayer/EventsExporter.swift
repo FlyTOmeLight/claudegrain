@@ -45,8 +45,14 @@ public struct EventsExporter: Sendable {
             for r in rows {
                 out += "\(r.date),\(csvEscape(r.repo)),\(r.events),\(r.input),\(r.output),\(r.cacheRead),\(r.cacheCreation),\(String(format: "%.4f", r.cost))\n"
             }
-        case .perToolDaily, .perModelDaily, .rawEvents:
-            out += "" // landed in Tasks 3, 4, 5
+        case .perToolDaily:
+            out += "date,tool,events,input_tokens,output_tokens,cost_usd\n"
+            let rows = try await db.perToolDaily(since: range.start, until: range.end)
+            for r in rows {
+                out += "\(r.date),\(csvEscape(r.tool)),\(r.events),\(r.input),\(r.output),\(String(format: "%.4f", r.cost))\n"
+            }
+        case .perModelDaily, .rawEvents:
+            out += "" // landed in Tasks 4, 5
         }
         return out
     }
