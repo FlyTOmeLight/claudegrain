@@ -51,6 +51,31 @@ Initial public release.
 - Per-row 7d sparkline data is currently mocked client-side; live wiring to
   `EventsDatabase.tokensSince` ships in 0.2
 
+## [0.1.5-rc2] — 2026-05-05
+
+Phase 2 of v0.2 — surfaces. Wires Phase 1's data into the popover and
+ships CSV/JSON export.
+
+### Added
+- CSV/JSON export in 4 dimensions: per-repo daily, per-tool daily,
+  per-model daily, raw events. Mandatory disclaimer header (ADR-0007).
+- `ForecastBadge` on the popover hero — block / weekly hit-time
+  prediction with confidence + basis annotation.
+- `WeekDeltaRow` — "Δ vs last week" mini row with cost % change and
+  cache-hit percentage-point delta.
+- `ModelMixRow` — Opus/Sonnet/Haiku attribution bar.
+- "Export Usage…" right-click menu item + `e` keyboard shortcut.
+- Localization for all new UI strings (EN + ZH).
+
+### Changed
+- `EventsDatabase` adds `perRepoDaily` / `perToolDaily` /
+  `perModelDaily` / `rawEventsInRange` aggregations for export.
+- Status bar item now responds to right-click with a context menu
+  (Export Usage… / Quit). Left-click still opens the popover.
+
+### Docs
+- ADR-0007 — export disclaimer.
+
 ## [0.1.4-rc1] — 2026-05-05
 
 Phase 1 of v0.2 — core data layer. UI surfaces unchanged; the new
