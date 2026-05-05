@@ -99,6 +99,14 @@ enum L: String, Hashable {
     case settingsNotifications
     case settingsAbout
     case settingsBudgets
+    case settingsQuietHours
+
+    // Settings — quiet hours
+    case quietHoursEnable
+    case quietHoursFrom
+    case quietHoursTo
+    case quietHoursDeviceLocal
+    case quietHoursDescription
 
     // Settings — budgets
     case budgetsGlobalSection
@@ -230,6 +238,12 @@ enum L10n {
         .settingsNotifications: "Notifications",
         .settingsAbout: "About",
         .settingsBudgets:           "Budgets",
+        .settingsQuietHours:        "Quiet Hours",
+        .quietHoursEnable:          "Enable quiet hours",
+        .quietHoursFrom:            "From",
+        .quietHoursTo:              "To",
+        .quietHoursDeviceLocal:     "Time zone: device local",
+        .quietHoursDescription:     "Notifications during this window are suppressed. The menu bar icon and popover still update.",
         .budgetsGlobalSection:      "Global default",
         .budgetsGlobalDaily:        "Daily $",
         .budgetsRepoSection:        "Per-repo overrides",
@@ -348,6 +362,12 @@ enum L10n {
         .settingsNotifications: "通知",
         .settingsAbout: "关于",
         .settingsBudgets:           "预算",
+        .settingsQuietHours:        "免打扰",
+        .quietHoursEnable:          "启用免打扰时段",
+        .quietHoursFrom:            "从",
+        .quietHoursTo:              "到",
+        .quietHoursDeviceLocal:     "时区:本机本地",
+        .quietHoursDescription:     "时段内不投递通知。菜单栏图标和 popover 仍会更新。",
         .budgetsGlobalSection:      "全局默认",
         .budgetsGlobalDaily:        "日预算 $",
         .budgetsRepoSection:        "按仓库覆盖",

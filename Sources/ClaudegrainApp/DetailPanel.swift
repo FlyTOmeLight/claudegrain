@@ -592,6 +592,8 @@ struct SettingsView: View {
             notificationsTab.tabItem { Label(model.t(.settingsNotifications), systemImage: "bell") }
             BudgetsTab(budgets: model.budgets, recentRepos: model.topRepos.map { $0.id })
                 .tabItem { Label(model.t(.settingsBudgets), systemImage: "dollarsign.circle") }
+            QuietHoursTab()
+                .tabItem { Label(model.t(.settingsQuietHours), systemImage: "moon.zzz") }
             aboutTab.tabItem { Label(model.t(.settingsAbout), systemImage: "info.circle") }
         }
         .frame(width: 460, height: 380)
