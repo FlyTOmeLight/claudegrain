@@ -97,4 +97,33 @@ final class ForecasterTests: XCTestCase {
         XCTAssertEqual(r.basis, .ewma)
         XCTAssertFalse(r.willHit)
     }
+
+    func testConfidenceTiers() async {
+        let f = Forecaster()
+        let now = Date()
+        let snap = SessionBlockSnapshot(
+            startedAt:    now.addingTimeInterval(-1200),
+            resetsAt:     now.addingTimeInterval(16_800),
+            usedFraction: 0.20,
+            totalTokens:  1
+        )
+
+        func bucketsOf(_ n: Int) -> [CostBucket] {
+            (0..<n).map { i in
+                CostBucket(
+                    start: now.addingTimeInterval(Double(-300 * (n - i))),
+                    end:   now.addingTimeInterval(Double(-300 * (n - i - 1))),
+                    costUSD: 0.10
+                )
+            }
+        }
+
+        let r3  = await f.forecastSessionBlock(block: snap, recent: bucketsOf(3))
+        let r5  = await f.forecastSessionBlock(block: snap, recent: bucketsOf(5))
+        let r10 = await f.forecastSessionBlock(block: snap, recent: bucketsOf(10))
+
+        XCTAssertEqual(r3.confidence,  .low)
+        XCTAssertEqual(r5.confidence,  .medium)
+        XCTAssertEqual(r10.confidence, .high)
+    }
 }
