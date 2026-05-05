@@ -1,6 +1,20 @@
 import Foundation
 import GRDB
 
+public struct TokenBreakdown: Equatable, Sendable {
+    public let input: Int
+    public let output: Int
+    public let cacheCreation: Int
+    public let cacheRead: Int
+    public init(input: Int, output: Int, cacheCreation: Int, cacheRead: Int) {
+        self.input = input
+        self.output = output
+        self.cacheCreation = cacheCreation
+        self.cacheRead = cacheRead
+    }
+    public var total: Int { input + output + cacheCreation + cacheRead }
+}
+
 public actor EventsDatabase {
     public static let defaultDirectory: URL = {
         let support = try! FileManager.default.url(
@@ -365,6 +379,41 @@ public actor EventsDatabase {
         var out: [ModelFamily: Double] = [:]
         for r in rows {
             out[ModelFamily.parse(r.model), default: 0] += r.cost
+        }
+        return out
+    }
+
+    /// Sum tokens grouped by `ModelFamily` over the half-open interval [since, until).
+    /// Returns a per-channel `TokenBreakdown` (input/output/cacheCreation/cacheRead).
+    /// Family grouping happens in Swift (ADR-0006); SQL just sums per raw model id.
+    public func tokensPerModel(since: Date, until: Date) throws -> [ModelFamily: TokenBreakdown] {
+        let rows: [Row] = try pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT model,
+                       COALESCE(SUM(in_tok), 0)           AS in_t,
+                       COALESCE(SUM(out_tok), 0)          AS out_t,
+                       COALESCE(SUM(cache_create_tok), 0) AS cc_t,
+                       COALESCE(SUM(cache_read_tok), 0)   AS cr_t
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                GROUP BY model
+                """, arguments: [since, until])
+        }
+
+        var out: [ModelFamily: TokenBreakdown] = [:]
+        for r in rows {
+            let fam = ModelFamily.parse(r["model"] ?? "")
+            let prior = out[fam] ?? TokenBreakdown(input: 0, output: 0, cacheCreation: 0, cacheRead: 0)
+            let inT  = Int(r["in_t"]  as Int64? ?? 0)
+            let outT = Int(r["out_t"] as Int64? ?? 0)
+            let ccT  = Int(r["cc_t"]  as Int64? ?? 0)
+            let crT  = Int(r["cr_t"]  as Int64? ?? 0)
+            out[fam] = TokenBreakdown(
+                input:         prior.input         + inT,
+                output:        prior.output        + outT,
+                cacheCreation: prior.cacheCreation + ccT,
+                cacheRead:     prior.cacheRead     + crT
+            )
         }
         return out
     }

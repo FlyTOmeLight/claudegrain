@@ -122,6 +122,37 @@ final class EventsDatabaseTests: XCTestCase {
         XCTAssertNil(map[.haiku])
     }
 
+    func testTokensPerModelSumsAllChannels() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let event = makeEvent(
+            model: "claude-opus-4-7",
+            inputTokens: 100,
+            outputTokens: 200,
+            cacheCreationTokens: 1000,
+            cacheReadTokens: 5000,
+            ts: now
+        )
+        try await db.insertEvents(
+            [event],
+            from: "/tmp/tpm.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 1, inode: 1, deviceId: 1, sizeAtLastRead: 1)
+        )
+
+        let map = try await db.tokensPerModel(
+            since: now.addingTimeInterval(-60),
+            until: now.addingTimeInterval(60)
+        )
+
+        let opus = try XCTUnwrap(map[.opus])
+        XCTAssertEqual(opus.input, 100)
+        XCTAssertEqual(opus.output, 200)
+        XCTAssertEqual(opus.cacheCreation, 1000)
+        XCTAssertEqual(opus.cacheRead, 5000)
+        XCTAssertEqual(opus.total, 6300)
+    }
+
     func testCostPerModelHonorsTimeWindow() async throws {
         let db = try EventsDatabase(url: dbURL)
         let now = Date()
