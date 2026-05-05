@@ -14,3 +14,6 @@ Package.resolved
 # scratch screenshots from design iteration
 v*.png
 /tmp/
+
+# local Claude Code project guide
+CLAUDE.md
