@@ -115,4 +115,31 @@ final class EventsExporterTests: XCTestCase {
         XCTAssertTrue(csv.contains(",opus,claude-opus-4-7,1,100,"))
         XCTAssertTrue(csv.contains(",sonnet,claude-sonnet-4-6,1,500,"))
     }
+
+    func testRawEventsCSV() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).db")
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let event = UsageEvent(
+            timestamp: now, sessionId: "sess-1", cwd: "/a", gitBranch: "main",
+            model: "claude-opus-4-7", tools: ["Bash"],
+            inputTokens: 100, outputTokens: 200,
+            cacheCreationTokens: 1000, cacheReadTokens: 5000
+        )
+        try await db.insertEvents([event], from: "/x.jsonl", startingAt: 0, cursor: JSONLReader.Cursor())
+
+        let exporter = EventsExporter(db: db)
+        let outURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).csv")
+        try await exporter.export(
+            range: DateInterval(start: now.addingTimeInterval(-60), end: now.addingTimeInterval(60)),
+            dimension: .rawEvents, format: .csv, to: outURL
+        )
+
+        let csv = try String(contentsOf: outURL, encoding: .utf8)
+        XCTAssertTrue(csv.contains("Dimension: raw events"))
+        XCTAssertTrue(csv.contains("timestamp,session_id,repo,git_branch,model,primary_tool,input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens,cost_usd"))
+        XCTAssertTrue(csv.contains(",sess-1,/a,main,claude-opus-4-7,Bash,100,200,1000,5000,"))
+    }
 }

@@ -60,7 +60,32 @@ public struct EventsExporter: Sendable {
                 out += "\(r.date),\(famStr),\(csvEscape(r.modelId)),\(r.events),\(r.input),\(r.output),\(String(format: "%.4f", r.cost))\n"
             }
         case .rawEvents:
-            out += "" // landed in Task 5
+            out += "timestamp,session_id,repo,git_branch,model,primary_tool,input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens,cost_usd\n"
+            let iso = ISO8601DateFormatter()
+            iso.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            let rows = try await db.rawEventsInRange(since: range.start, until: range.end)
+            for r in rows {
+                let ts: Date = r["ts"] ?? Date()
+                let inTok: Int64 = r["in_tok"] ?? 0
+                let outTok: Int64 = r["out_tok"] ?? 0
+                let cc: Int64 = r["cache_create_tok"] ?? 0
+                let cr: Int64 = r["cache_read_tok"] ?? 0
+                let cost: Double = r["cost_usd"] ?? 0
+                let fields: [String] = [
+                    iso.string(from: ts),
+                    csvEscape(r["session_id"]   ?? ""),
+                    csvEscape(r["cwd"]          ?? ""),
+                    csvEscape(r["git_branch"]   ?? ""),
+                    csvEscape(r["model"]        ?? ""),
+                    csvEscape(r["primary_tool"] ?? ""),
+                    String(inTok),
+                    String(outTok),
+                    String(cc),
+                    String(cr),
+                    String(format: "%.4f", cost),
+                ]
+                out += fields.joined(separator: ",") + "\n"
+            }
         }
         return out
     }

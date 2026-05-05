@@ -500,6 +500,18 @@ public actor EventsDatabase {
         }
     }
 
+    public func rawEventsInRange(since: Date, until: Date) throws -> [Row] {
+        try pool.read { db in
+            try Row.fetchAll(db, sql: """
+                SELECT ts, session_id, cwd, git_branch, model, primary_tool,
+                       in_tok, out_tok, cache_create_tok, cache_read_tok, cost_usd
+                FROM events
+                WHERE ts >= ? AND ts < ?
+                ORDER BY ts ASC
+                """, arguments: [since, until])
+        }
+    }
+
     /// Sum tokens grouped by `ModelFamily` over the half-open interval [since, until).
     /// Returns a per-channel `TokenBreakdown` (input/output/cacheCreation/cacheRead).
     /// Family grouping happens in Swift (ADR-0006); SQL just sums per raw model id.
