@@ -51,6 +51,15 @@ Initial public release.
 - Per-row 7d sparkline data is currently mocked client-side; live wiring to
   `EventsDatabase.tokensSince` ships in 0.2
 
+## [0.1.5-rc3] — 2026-05-05
+
+### Fixed
+- Fixed-mode popover overflow regression: WeekDeltaRow + ModelMixRow
+  added in rc2 ran in both layout modes, blowing past the HD-screen
+  height budget that `.fixed` mode protects. Now gated on `.scroll`
+  mode (parity with SubtotalsBlock); ForecastBadge stays in both
+  modes since it's hero-adjacent and tiny.
+
 ## [0.1.5-rc2] — 2026-05-05
 
 Phase 2 of v0.2 — surfaces. Wires Phase 1's data into the popover and
