@@ -96,7 +96,19 @@ private struct ReceiptBody: View {
 
             HeroSpend(yesterdayCost: 7.5)
 
+            // Forecast badge — kept in both modes; tiny, hero-adjacent.
+            if model.forecastBlock?.basis != .insufficient {
+                ForecastBadge(forecast: model.forecastBlock, labelKey: .forecastBlockHits)
+                    .padding(.top, 2)
+            }
+
             DashedDivider()
+
+            // WeekDelta — fixed mode skips to fit HD screens (parity with SubtotalsBlock).
+            if model.layoutMode == .scroll {
+                WeekDeltaRow(delta: model.weekDelta)
+                DashedDivider()
+            }
 
             SectionHeader(label: model.t(.sectionUsageLimits))
             VStack(spacing: 2) {
@@ -130,6 +142,12 @@ private struct ReceiptBody: View {
 
             SectionHeader(label: model.t(.sectionTopCosts))
             TopCostsList()
+
+            // ModelMix — fixed mode skips to fit HD screens.
+            if model.layoutMode == .scroll {
+                DashedDivider()
+                ModelMixRow(mix: model.modelMix)
+            }
 
             DoubleDivider()
 
@@ -421,6 +439,7 @@ private struct FooterBlock: View {
             HStack(spacing: 6) {
                 kbd("F2", model.t(.kbCfg)) { openSettingsWindow() }
                 refreshButton
+                kbd("E", model.t(.kbExport)) { model.exportHandler?() }
                 kbd("F10", model.t(.kbQuit)) { NSApp.terminate(nil) }
             }
             .padding(.top, 6)

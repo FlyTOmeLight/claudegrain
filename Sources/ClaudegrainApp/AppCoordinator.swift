@@ -1,4 +1,6 @@
+import AppKit
 import Foundation
+import SwiftUI
 import ClaudegrainCore
 
 /// Wires `IngestActor` (jsonl pipeline) and `DataSourceCoordinator` (OAuth poll)
@@ -14,6 +16,10 @@ final class AppCoordinator {
     private var ingestTask: Task<Void, Never>?
     private var dataSourceTask: Task<Void, Never>?
 
+    /// Exposed so menu / popover entry points can present the export sheet.
+    let exporter: EventsExporter
+    private var exportWindow: NSWindow?
+
     init(
         model: AppModel,
         notifications: NotificationManager? = nil,
@@ -28,6 +34,34 @@ final class AppCoordinator {
         self.ingest = IngestActor(db: db)
         self.dataSource = DataSourceCoordinator()
         self.notifications = notifications ?? NotificationManager(prefs: model.preferences)
+        self.exporter = EventsExporter(db: self.db)
+    }
+
+    /// Opens the export sheet as a standalone window. LSUIElement = true ⇒ activate
+    /// explicitly so the window keys properly. Reuses one window across invocations.
+    func openExportSheet() {
+        if let win = exportWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            win.makeKeyAndOrderFront(nil)
+            return
+        }
+        let coord = ExportSheetCoordinator(exporter: exporter)
+        let view = ExportSheet(coord: coord)
+            .environmentObject(model)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 420, height: 280),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = model.t(.exportSheetTitle)
+        window.contentView = NSHostingView(rootView: view)
+        window.center()
+        window.isReleasedWhenClosed = false
+        exportWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
     }
 
     func start() async {
@@ -55,6 +89,13 @@ final class AppCoordinator {
             for await snapshot in dataSourceStream {
                 self?.applyDataSourceSnapshot(snapshot)
             }
+        }
+
+        // Kick an immediate OAuth + ingest poll so the popover shows real
+        // sessionBlock/weekly values without the user having to F5 once at boot.
+        Task { [ingest, dataSource] in
+            await ingest.refreshNow()
+            await dataSource.refreshNow()
         }
     }
 

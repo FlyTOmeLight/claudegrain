@@ -1,0 +1,179 @@
+import XCTest
+@testable import ClaudegrainCore
+
+final class EventsExporterTests: XCTestCase {
+    func testEnumRawValues() {
+        XCTAssertEqual(ExportDimension.perRepoDaily.rawValue,  "per-repo daily")
+        XCTAssertEqual(ExportDimension.perToolDaily.rawValue,  "per-tool daily")
+        XCTAssertEqual(ExportDimension.perModelDaily.rawValue, "per-model daily")
+        XCTAssertEqual(ExportDimension.rawEvents.rawValue,     "raw events")
+        XCTAssertEqual(ExportFormat.csv.rawValue,  "csv")
+        XCTAssertEqual(ExportFormat.json.rawValue, "json")
+    }
+
+    func testExporterInit() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).db")
+        let db = try EventsDatabase(url: dbURL)
+        _ = EventsExporter(db: db)
+    }
+
+    func testPerRepoDailyCSVHasDisclaimerHeaderAndRows() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).db")
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let events = [
+            UsageEvent(timestamp: now,                          sessionId: "s1", cwd: "/a",
+                       gitBranch: nil, model: "claude-opus-4-7", tools: [],
+                       inputTokens: 1_000_000, outputTokens: 0,
+                       cacheCreationTokens: 0, cacheReadTokens: 0),
+            UsageEvent(timestamp: now.addingTimeInterval(60),   sessionId: "s2", cwd: "/a",
+                       gitBranch: nil, model: "claude-opus-4-7", tools: [],
+                       inputTokens: 500_000,   outputTokens: 0,
+                       cacheCreationTokens: 0, cacheReadTokens: 0),
+            UsageEvent(timestamp: now,                          sessionId: "s3", cwd: "/b",
+                       gitBranch: nil, model: "claude-opus-4-7", tools: [],
+                       inputTokens: 200_000,   outputTokens: 0,
+                       cacheCreationTokens: 0, cacheReadTokens: 0),
+        ]
+        try await db.insertEvents(events, from: "/test.jsonl", startingAt: 0, cursor: JSONLReader.Cursor())
+
+        let exporter = EventsExporter(db: db)
+        let outURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).csv")
+        let range = DateInterval(start: now.addingTimeInterval(-3600), end: now.addingTimeInterval(3600))
+
+        try await exporter.export(range: range, dimension: .perRepoDaily, format: .csv, to: outURL)
+
+        let csv = try String(contentsOf: outURL, encoding: .utf8)
+        XCTAssertTrue(csv.contains("# claudegrain export"),                "missing disclaimer line")
+        XCTAssertTrue(csv.contains("Not the Anthropic billing source"),    "missing accuracy disclaimer")
+        XCTAssertTrue(csv.contains("Dimension: per-repo daily"),           "missing dimension annotation")
+        XCTAssertTrue(csv.contains("date,repo,events,input_tokens,output_tokens,cache_read_tokens,cache_creation_tokens,cost_usd"),
+                      "missing column header")
+        XCTAssertTrue(csv.contains(",/a,2,1500000,"))
+        XCTAssertTrue(csv.contains(",/b,1,200000,"))
+    }
+
+    func testPerToolDailyCSVGroupsByTool() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).db")
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let events = [
+            UsageEvent(timestamp: now, sessionId: "s", cwd: "/a", gitBranch: nil,
+                       model: "claude-opus-4-7", tools: ["Bash"],
+                       inputTokens: 100, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0),
+            UsageEvent(timestamp: now, sessionId: "s", cwd: "/a", gitBranch: nil,
+                       model: "claude-opus-4-7", tools: ["Edit"],
+                       inputTokens: 200, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0),
+        ]
+        try await db.insertEvents(events, from: "/test.jsonl", startingAt: 0, cursor: JSONLReader.Cursor())
+
+        let exporter = EventsExporter(db: db)
+        let outURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).csv")
+        try await exporter.export(
+            range: DateInterval(start: now.addingTimeInterval(-3600), end: now.addingTimeInterval(3600)),
+            dimension: .perToolDaily, format: .csv, to: outURL
+        )
+
+        let csv = try String(contentsOf: outURL, encoding: .utf8)
+        XCTAssertTrue(csv.contains("Dimension: per-tool daily"))
+        XCTAssertTrue(csv.contains("date,tool,events,input_tokens,output_tokens,cost_usd"))
+        XCTAssertTrue(csv.contains(",Bash,1,100,"))
+        XCTAssertTrue(csv.contains(",Edit,1,200,"))
+    }
+
+    func testPerModelDailyCSV() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).db")
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let events = [
+            UsageEvent(timestamp: now, sessionId: "s", cwd: "/a", gitBranch: nil,
+                       model: "claude-opus-4-7", tools: [],
+                       inputTokens: 100, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0),
+            UsageEvent(timestamp: now, sessionId: "s", cwd: "/a", gitBranch: nil,
+                       model: "claude-sonnet-4-6", tools: [],
+                       inputTokens: 500, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0),
+        ]
+        try await db.insertEvents(events, from: "/test.jsonl", startingAt: 0, cursor: JSONLReader.Cursor())
+
+        let exporter = EventsExporter(db: db)
+        let outURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).csv")
+        try await exporter.export(
+            range: DateInterval(start: now.addingTimeInterval(-3600), end: now.addingTimeInterval(3600)),
+            dimension: .perModelDaily, format: .csv, to: outURL
+        )
+
+        let csv = try String(contentsOf: outURL, encoding: .utf8)
+        XCTAssertTrue(csv.contains("Dimension: per-model daily"))
+        XCTAssertTrue(csv.contains("date,model_family,model_id,events,input_tokens,output_tokens,cost_usd"))
+        XCTAssertTrue(csv.contains(",opus,claude-opus-4-7,1,100,"))
+        XCTAssertTrue(csv.contains(",sonnet,claude-sonnet-4-6,1,500,"))
+    }
+
+    func testRawEventsCSV() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).db")
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let event = UsageEvent(
+            timestamp: now, sessionId: "sess-1", cwd: "/a", gitBranch: "main",
+            model: "claude-opus-4-7", tools: ["Bash"],
+            inputTokens: 100, outputTokens: 200,
+            cacheCreationTokens: 1000, cacheReadTokens: 5000
+        )
+        try await db.insertEvents([event], from: "/x.jsonl", startingAt: 0, cursor: JSONLReader.Cursor())
+
+        let exporter = EventsExporter(db: db)
+        let outURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).csv")
+        try await exporter.export(
+            range: DateInterval(start: now.addingTimeInterval(-60), end: now.addingTimeInterval(60)),
+            dimension: .rawEvents, format: .csv, to: outURL
+        )
+
+        let csv = try String(contentsOf: outURL, encoding: .utf8)
+        XCTAssertTrue(csv.contains("Dimension: raw events"))
+        XCTAssertTrue(csv.contains("timestamp,session_id,repo,git_branch,model,primary_tool,input_tokens,output_tokens,cache_creation_tokens,cache_read_tokens,cost_usd"))
+        XCTAssertTrue(csv.contains(",sess-1,/a,main,claude-opus-4-7,Bash,100,200,1000,5000,"))
+    }
+
+    func testJSONExportEnvelopeAndPerRepoData() async throws {
+        let dbURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).db")
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let event = UsageEvent(
+            timestamp: now, sessionId: "s", cwd: "/a", gitBranch: nil,
+            model: "claude-opus-4-7", tools: [],
+            inputTokens: 100, outputTokens: 0, cacheCreationTokens: 0, cacheReadTokens: 0
+        )
+        try await db.insertEvents([event], from: "/x.jsonl", startingAt: 0, cursor: JSONLReader.Cursor())
+
+        let exporter = EventsExporter(db: db)
+        let outURL = URL(fileURLWithPath: NSTemporaryDirectory())
+            .appendingPathComponent("cg-export-\(UUID().uuidString).json")
+        try await exporter.export(
+            range: DateInterval(start: now.addingTimeInterval(-3600), end: now.addingTimeInterval(3600)),
+            dimension: .perRepoDaily, format: .json, to: outURL
+        )
+
+        let data = try Data(contentsOf: outURL)
+        let json = try JSONSerialization.jsonObject(with: data) as! [String: Any]
+        let meta = try XCTUnwrap(json["_meta"] as? [String: Any])
+        XCTAssertEqual(meta["attribution"]    as? String, "primaryTool")
+        XCTAssertEqual(meta["dimension"]      as? String, "per-repo daily")
+        XCTAssertEqual(meta["disclaimer"]     as? String, "Public price-table cost estimate. Not the Anthropic billing source of truth.")
+        XCTAssertNotNil(meta["generated_at"])
+        XCTAssertNotNil(meta["range"])
+        let rows = try XCTUnwrap(json["rows"] as? [[String: Any]])
+        XCTAssertEqual(rows.count, 1)
+        XCTAssertEqual(rows[0]["repo"] as? String, "/a")
+        XCTAssertEqual(rows[0]["events"] as? Int, 1)
+    }
+}

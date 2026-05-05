@@ -51,6 +51,48 @@ Initial public release.
 - Per-row 7d sparkline data is currently mocked client-side; live wiring to
   `EventsDatabase.tokensSince` ships in 0.2
 
+## [0.1.5-rc4] — 2026-05-05
+
+### Fixed
+- Boot stuck on "启动中" / blank session-block + weekly until manual F5.
+  `AppCoordinator.start()` now kicks an immediate `ingest.refreshNow()`
+  + `dataSource.refreshNow()` after stream wiring so the popover lands
+  on real values without the user having to refresh once.
+
+## [0.1.5-rc3] — 2026-05-05
+
+### Fixed
+- Fixed-mode popover overflow regression: WeekDeltaRow + ModelMixRow
+  added in rc2 ran in both layout modes, blowing past the HD-screen
+  height budget that `.fixed` mode protects. Now gated on `.scroll`
+  mode (parity with SubtotalsBlock); ForecastBadge stays in both
+  modes since it's hero-adjacent and tiny.
+
+## [0.1.5-rc2] — 2026-05-05
+
+Phase 2 of v0.2 — surfaces. Wires Phase 1's data into the popover and
+ships CSV/JSON export.
+
+### Added
+- CSV/JSON export in 4 dimensions: per-repo daily, per-tool daily,
+  per-model daily, raw events. Mandatory disclaimer header (ADR-0007).
+- `ForecastBadge` on the popover hero — block / weekly hit-time
+  prediction with confidence + basis annotation.
+- `WeekDeltaRow` — "Δ vs last week" mini row with cost % change and
+  cache-hit percentage-point delta.
+- `ModelMixRow` — Opus/Sonnet/Haiku attribution bar.
+- "Export Usage…" right-click menu item + `e` keyboard shortcut.
+- Localization for all new UI strings (EN + ZH).
+
+### Changed
+- `EventsDatabase` adds `perRepoDaily` / `perToolDaily` /
+  `perModelDaily` / `rawEventsInRange` aggregations for export.
+- Status bar item now responds to right-click with a context menu
+  (Export Usage… / Quit). Left-click still opens the popover.
+
+### Docs
+- ADR-0007 — export disclaimer.
+
 ## [0.1.4-rc1] — 2026-05-05
 
 Phase 1 of v0.2 — core data layer. UI surfaces unchanged; the new
