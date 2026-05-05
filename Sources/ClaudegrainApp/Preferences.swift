@@ -49,7 +49,9 @@ final class Preferences: ObservableObject {
             Key.notifyBurnRate: false,
             Key.notifyBlockReset: false,
             Key.notifyRepoOverspend: false,
-            Key.repoOverspendThresholdUSD: 10.0,
+            // repoOverspendThresholdUSD migrated to BudgetStore.globalDefaultDailyUSD;
+            // omit from registration domain so process-wide registration doesn't leak
+            // a default value into BudgetStoreTests' isolated suite migration check.
             Key.primaryMetric: PrimaryMetric.sessionPercent.rawValue,
             Key.language: AppLanguage.chinese.rawValue,
             Key.layoutMode: LayoutMode.scroll.rawValue,
