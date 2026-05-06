@@ -52,6 +52,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             model.pauseHandler = { [weak c] in
                 c?.pauseController.toggle()
             }
+            model.commitmentsHandler = { [weak c] in
+                c?.openCommitmentsSheet()
+            }
             await c.start()
         } catch {
             model.dataSourceStatus = .offline

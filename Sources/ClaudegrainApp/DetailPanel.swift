@@ -449,6 +449,18 @@ private struct FooterBlock: View {
             }
             .padding(.top, 6)
 
+            if !model.commitments.entries.isEmpty {
+                Button(action: { model.commitmentsHandler?() }) {
+                    Text(String(format: model.t(.commitmentsFooterLink),
+                                model.commitments.entries.count))
+                        .font(.cgMonoXSmall)
+                        .tracking(1.4)
+                        .foregroundStyle(theme.ink.opacity(0.7))
+                        .underline()
+                }
+                .buttonStyle(.plain)
+            }
+
             Text("───── \(String(format: model.t(.footerEndEvents), eventCount)) ─────")
                 .font(.cgMonoXSmall)
                 .tracking(1.6)

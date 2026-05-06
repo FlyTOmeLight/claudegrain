@@ -30,6 +30,9 @@ final class AppModel: ObservableObject {
     /// Toggles ingest pause. Wired by `AppDelegate` after coordinator construction.
     var pauseHandler: (@MainActor () -> Void)?
 
+    /// Opens the recent-commitments sheet. Wired by `AppDelegate`.
+    var commitmentsHandler: (@MainActor () -> Void)?
+
     let loginItem: LoginItemController
     let preferences: Preferences
     let budgets: BudgetStore

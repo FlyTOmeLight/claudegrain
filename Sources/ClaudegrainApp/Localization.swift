@@ -102,6 +102,15 @@ enum L: String, Hashable {
     case pauseBannerLastUpdate
     case pauseBannerResume
 
+    // v0.2 — commitments sheet
+    case commitmentsTitle
+    case commitmentsEmpty
+    case commitmentsClose
+    case commitmentsStatusOpen
+    case commitmentsStatusPaused
+    case commitmentsStatusIgnored
+    case commitmentsFooterLink
+
     // Settings — tabs
     case settingsGeneral
     case settingsNotifications
@@ -248,6 +257,14 @@ enum L10n {
         .pauseBannerLastUpdate:     "last updated %@",
         .pauseBannerResume:         "Resume",
 
+        .commitmentsTitle:          "Recent commitments",
+        .commitmentsEmpty:          "No commitments recorded yet.",
+        .commitmentsClose:          "Close",
+        .commitmentsStatusOpen:     "open",
+        .commitmentsStatusPaused:   "paused",
+        .commitmentsStatusIgnored:  "ignored",
+        .commitmentsFooterLink:     "commitments [%d]",
+
         .settingsGeneral: "General",
         .settingsNotifications: "Notifications",
         .settingsAbout: "About",
@@ -377,6 +394,14 @@ enum L10n {
         .pauseBannerTitle:          "已暂停",
         .pauseBannerLastUpdate:     "最后更新 %@",
         .pauseBannerResume:         "恢复",
+
+        .commitmentsTitle:          "最近承诺",
+        .commitmentsEmpty:          "尚无承诺记录。",
+        .commitmentsClose:          "关闭",
+        .commitmentsStatusOpen:     "未处理",
+        .commitmentsStatusPaused:   "已暂停",
+        .commitmentsStatusIgnored:  "已忽略",
+        .commitmentsFooterLink:     "承诺 [%d]",
 
         .settingsGeneral: "通用",
         .settingsNotifications: "通知",

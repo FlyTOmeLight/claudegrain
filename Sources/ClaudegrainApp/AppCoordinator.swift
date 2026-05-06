@@ -26,6 +26,7 @@ final class AppCoordinator {
     private var pauseSubscription: AnyCancellable?
     private var notificationDelegate: NotificationActionRelay?
     private var exportWindow: NSWindow?
+    private var commitmentsWindow: NSWindow?
 
     init(
         model: AppModel,
@@ -78,6 +79,31 @@ final class AppCoordinator {
         window.center()
         window.isReleasedWhenClosed = false
         exportWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
+    /// Opens the recent commitments sheet as a standalone window.
+    func openCommitmentsSheet() {
+        if let win = commitmentsWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            win.makeKeyAndOrderFront(nil)
+            return
+        }
+        let view = CommitmentsSheet(log: commitments)
+            .environmentObject(model)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 360),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = model.t(.commitmentsTitle)
+        window.contentView = NSHostingView(rootView: view)
+        window.center()
+        window.isReleasedWhenClosed = false
+        commitmentsWindow = window
         NSApp.activate(ignoringOtherApps: true)
         window.makeKeyAndOrderFront(nil)
     }
