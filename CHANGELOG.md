@@ -4,6 +4,37 @@ All notable changes to **claudegrain** are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6-rc5] — 2026-05-05
+
+Phase 3 of v0.2 — control. Adds proactive notification + ingestion
+controls.
+
+### Added
+- Per-repo soft budgets (`BudgetStore`). Replaces the single
+  `repoOverspendThresholdUSD` value (auto-migrated). New `Budgets`
+  settings tab. (ADR-0008)
+- Quiet Hours window suppresses all notifications during a configurable
+  daily slice (cross-midnight supported). New `Quiet Hours` settings
+  tab. (ADR-0009)
+- Pause Ingest toggle — halts FSEvents + OAuth polling; resume runs
+  catch-up via existing cursor logic. Right-click menu item, `p`
+  footer button, popover banner.
+- Repo-overspend notifications now carry actionable buttons
+  (`Mark as paused` / `Ignore`). Responses are logged to
+  `CommitmentLog` (separate JSON file). New `Recent commitments` sheet.
+  (ADR-0010)
+- Localization: ~30 new EN/ZH strings.
+
+### Changed
+- `NotificationManager` consults `BudgetStore.resolve(repo:)` instead
+  of a single global threshold.
+- `NotificationManager.fire(...)` gated on `QuietHours.contains(now)`.
+
+### Docs
+- ADR-0008 budget-storage
+- ADR-0009 quiet-hours-suppress-only
+- ADR-0010 commitment-log
+
 ## [0.1.0] — 2026-05-05
 
 Initial public release.
