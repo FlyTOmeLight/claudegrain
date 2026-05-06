@@ -263,7 +263,7 @@ enum L10n {
         .commitmentsStatusOpen:     "open",
         .commitmentsStatusPaused:   "paused",
         .commitmentsStatusIgnored:  "ignored",
-        .commitmentsFooterLink:     "commitments [%d]",
+        .commitmentsFooterLink:     "Recent commitments [%d]",
 
         .settingsGeneral: "General",
         .settingsNotifications: "Notifications",
@@ -401,7 +401,7 @@ enum L10n {
         .commitmentsStatusOpen:     "未处理",
         .commitmentsStatusPaused:   "已暂停",
         .commitmentsStatusIgnored:  "已忽略",
-        .commitmentsFooterLink:     "承诺 [%d]",
+        .commitmentsFooterLink:     "最近承诺 [%d]",
 
         .settingsGeneral: "通用",
         .settingsNotifications: "通知",
