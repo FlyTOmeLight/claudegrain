@@ -34,9 +34,11 @@ final class AppModel: ObservableObject {
     let preferences: Preferences
     let budgets: BudgetStore
     let pauseController: IngestPauseController
+    let commitments: CommitmentLog
     private var prefsCancellable: AnyCancellable?
     private var budgetsCancellable: AnyCancellable?
     private var pauseCancellable: AnyCancellable?
+    private var commitmentsCancellable: AnyCancellable?
 
     var primaryMetric: PrimaryMetric {
         get { preferences.primaryMetric }
@@ -61,7 +63,8 @@ final class AppModel: ObservableObject {
     init(loginItem: LoginItemController? = nil,
          preferences: Preferences? = nil,
          budgets: BudgetStore? = nil,
-         pauseController: IngestPauseController? = nil) {
+         pauseController: IngestPauseController? = nil,
+         commitments: CommitmentLog? = nil) {
         self.loginItem = loginItem ?? LoginItemController()
         let prefs = preferences ?? .shared
         self.preferences = prefs
@@ -69,6 +72,8 @@ final class AppModel: ObservableObject {
         self.budgets = store
         let pause = pauseController ?? IngestPauseController()
         self.pauseController = pause
+        let log = commitments ?? CommitmentLog()
+        self.commitments = log
         // Forward Preferences changes so any view bound to AppModel
         // (popover, settings, menu bar label) live-updates when the user
         // toggles language / layout / metric in Settings.
@@ -83,6 +88,11 @@ final class AppModel: ObservableObject {
         // Forward IngestPauseController changes so the popover banner +
         // menu label react instantly when the user toggles pause.
         self.pauseCancellable = pause.objectWillChange.sink { [weak self] _ in
+            DispatchQueue.main.async { self?.objectWillChange.send() }
+        }
+        // Forward CommitmentLog updates so the recent-commitments sheet
+        // redraws after each new entry.
+        self.commitmentsCancellable = log.objectWillChange.sink { [weak self] _ in
             DispatchQueue.main.async { self?.objectWillChange.send() }
         }
     }

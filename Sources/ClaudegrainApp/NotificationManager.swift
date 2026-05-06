@@ -15,6 +15,10 @@ enum NotificationKind: String, Hashable {
 final class NotificationManager {
     typealias Handler = (NotificationKind, String, String) -> Void
 
+    static let repoOverspendCategoryID = "REPO_OVERSPEND"
+    static let actionMarkPaused = "MARK_PAUSED"
+    static let actionIgnore     = "IGNORE"
+
     private let prefs: Preferences
     private let budgets: BudgetStore
     private let handler: Handler
@@ -101,10 +105,30 @@ final class NotificationManager {
             guard let dailyLimit = budget.dailyUSD, repo.costUSD >= dailyLimit else { continue }
             let key = RepoOverspendKey(date: Calendar.current.startOfDay(for: Date()), repo: repo.id)
             guard !repoOverspendFired.contains(key) else { continue }
-            fire(.repoOverspend,
-                 title: "Repo over budget · \(repo.repo)",
-                 body: "\(repo.id): today $\(String(format: "%.2f", repo.costUSD)) ≥ budget $\(String(format: "%.2f", dailyLimit))")
+            fireRepoOverspend(repo: repo, dailyLimit: dailyLimit)
             repoOverspendFired.insert(key)
+        }
+    }
+
+    private func fireRepoOverspend(repo: RepoBreakdown, dailyLimit: Double) {
+        guard shouldDeliver(now: Date()) else { return }
+        let title = "Repo over budget · \(repo.repo)"
+        let body  = "\(repo.id): today $\(String(format: "%.2f", repo.costUSD)) ≥ budget $\(String(format: "%.2f", dailyLimit))"
+        if usesSystemCenter {
+            let content = UNMutableNotificationContent()
+            content.title = title
+            content.body = body
+            content.sound = .default
+            content.categoryIdentifier = Self.repoOverspendCategoryID
+            content.userInfo = ["repo": repo.id, "cost": repo.costUSD]
+            let req = UNNotificationRequest(
+                identifier: "\(NotificationKind.repoOverspend.rawValue)-\(repo.id)",
+                content: content,
+                trigger: nil
+            )
+            UNUserNotificationCenter.current().add(req, withCompletionHandler: nil)
+        } else {
+            handler(.repoOverspend, title, body)
         }
     }
 
@@ -157,7 +181,26 @@ final class NotificationManager {
     private func ensureAuthorization() {
         guard usesSystemCenter, !authRequested else { return }
         authRequested = true
-        UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        let center = UNUserNotificationCenter.current()
+        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+
+        let mark = UNNotificationAction(
+            identifier: Self.actionMarkPaused,
+            title: "Mark as paused",
+            options: [.foreground]
+        )
+        let ignore = UNNotificationAction(
+            identifier: Self.actionIgnore,
+            title: "Ignore",
+            options: []
+        )
+        let category = UNNotificationCategory(
+            identifier: Self.repoOverspendCategoryID,
+            actions: [mark, ignore],
+            intentIdentifiers: [],
+            options: []
+        )
+        center.setNotificationCategories([category])
     }
 
     private static func defaultHandler(kind: NotificationKind, title: String, body: String) {

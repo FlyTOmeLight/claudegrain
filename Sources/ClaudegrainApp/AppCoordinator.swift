@@ -2,6 +2,7 @@ import AppKit
 import Combine
 import Foundation
 import SwiftUI
+import UserNotifications
 import ClaudegrainCore
 
 /// Wires `IngestActor` (jsonl pipeline) and `DataSourceCoordinator` (OAuth poll)
@@ -21,7 +22,9 @@ final class AppCoordinator {
     let exporter: EventsExporter
     let budgets: BudgetStore
     let pauseController: IngestPauseController
+    let commitments: CommitmentLog
     private var pauseSubscription: AnyCancellable?
+    private var notificationDelegate: NotificationActionRelay?
     private var exportWindow: NSWindow?
 
     init(
@@ -49,6 +52,7 @@ final class AppCoordinator {
         // Reuse the AppModel-owned pauseController so popover banner + menu
         // observe the same instance the coordinator drives.
         self.pauseController = model.pauseController
+        self.commitments = model.commitments
     }
 
     /// Opens the export sheet as a standalone window. LSUIElement = true ⇒ activate
@@ -79,6 +83,12 @@ final class AppCoordinator {
     }
 
     func start() async {
+        // Wire UN action callbacks → CommitmentLog. Retain the relay so it's
+        // not deallocated; UNUserNotificationCenter only weak-holds delegates.
+        let relay = NotificationActionRelay(commitments: commitments)
+        UNUserNotificationCenter.current().delegate = relay
+        self.notificationDelegate = relay
+
         // Apply the last-good LiteLLM price catalog (if any) before we cost
         // any events, then kick off a daily background refresh.
         await PriceTableLoader.shared.applyDiskCache()
