@@ -143,6 +143,16 @@ final class StatusItemController: ObservableObject {
         exportItem.target = self
         menu.addItem(exportItem)
 
+        let isPaused = AppDelegate.shared?.coordinator?.pauseController.isPaused ?? false
+        let pauseTitle = isPaused ? model.t(.menuResumeIngest) : model.t(.menuPauseIngest)
+        let pauseItem = NSMenuItem(
+            title: pauseTitle,
+            action: #selector(handlePauseMenu),
+            keyEquivalent: ""
+        )
+        pauseItem.target = self
+        menu.addItem(pauseItem)
+
         menu.addItem(.separator())
 
         let quitItem = NSMenuItem(
@@ -163,6 +173,10 @@ final class StatusItemController: ObservableObject {
 
     @objc private func handleExportMenu() {
         AppDelegate.shared?.coordinator?.openExportSheet()
+    }
+
+    @objc private func handlePauseMenu() {
+        AppDelegate.shared?.coordinator?.pauseController.toggle()
     }
 
     @objc private func handleQuitMenu() {

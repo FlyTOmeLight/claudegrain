@@ -93,6 +93,14 @@ enum L: String, Hashable {
 
     // v0.2 — kbd
     case kbExport                 // "export"
+    case kbPause
+
+    // v0.2 — pause UI
+    case menuPauseIngest
+    case menuResumeIngest
+    case pauseBannerTitle
+    case pauseBannerLastUpdate
+    case pauseBannerResume
 
     // Settings — tabs
     case settingsGeneral
@@ -233,6 +241,12 @@ enum L10n {
         .exportCancel:             "Cancel",
         .exportDone:               "Saved to %@",
         .kbExport:                 "export",
+        .kbPause:                   "pause",
+        .menuPauseIngest:           "Pause Ingest",
+        .menuResumeIngest:          "Resume Ingest",
+        .pauseBannerTitle:          "Paused",
+        .pauseBannerLastUpdate:     "last updated %@",
+        .pauseBannerResume:         "Resume",
 
         .settingsGeneral: "General",
         .settingsNotifications: "Notifications",
@@ -357,6 +371,12 @@ enum L10n {
         .exportCancel:             "取消",
         .exportDone:               "已保存到 %@",
         .kbExport:                 "导出",
+        .kbPause:                   "暂停",
+        .menuPauseIngest:           "暂停采集",
+        .menuResumeIngest:          "恢复采集",
+        .pauseBannerTitle:          "已暂停",
+        .pauseBannerLastUpdate:     "最后更新 %@",
+        .pauseBannerResume:         "恢复",
 
         .settingsGeneral: "通用",
         .settingsNotifications: "通知",

@@ -92,6 +92,10 @@ private struct ReceiptBody: View {
 
             HeaderStrip()
 
+            if model.pauseController.isPaused {
+                PauseBanner()
+            }
+
             DoubleDivider()
 
             HeroSpend(yesterdayCost: 7.5)
@@ -440,6 +444,7 @@ private struct FooterBlock: View {
                 kbd("F2", model.t(.kbCfg)) { openSettingsWindow() }
                 refreshButton
                 kbd("E", model.t(.kbExport)) { model.exportHandler?() }
+                kbd("P", model.t(.kbPause)) { model.pauseHandler?() }
                 kbd("F10", model.t(.kbQuit)) { NSApp.terminate(nil) }
             }
             .padding(.top, 6)
@@ -701,5 +706,38 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             model.preferences.notificationSoundChoice = .imported(path: url.path)
         }
+    }
+}
+
+private struct PauseBanner: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("⏸ \(model.t(.pauseBannerTitle))")
+                .font(.cgMonoSmall.weight(.bold))
+                .tracking(1.4)
+                .foregroundStyle(theme.inkBold)
+            Spacer()
+            Button(model.t(.pauseBannerResume)) {
+                model.pauseHandler?()
+            }
+            .buttonStyle(.plain)
+            .font(.cgMonoSmall.weight(.bold))
+            .foregroundStyle(theme.paperBg)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(theme.inkBold)
+            .cornerRadius(2)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(theme.inkBold.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(theme.inkBold.opacity(0.4), lineWidth: 0.5)
+        )
+        .padding(.horizontal, 4)
     }
 }

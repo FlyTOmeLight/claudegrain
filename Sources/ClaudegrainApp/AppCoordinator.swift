@@ -46,7 +46,9 @@ final class AppCoordinator {
 
         self.notifications = notifications ?? NotificationManager(prefs: model.preferences, budgets: store)
         self.exporter = EventsExporter(db: self.db)
-        self.pauseController = IngestPauseController()
+        // Reuse the AppModel-owned pauseController so popover banner + menu
+        // observe the same instance the coordinator drives.
+        self.pauseController = model.pauseController
     }
 
     /// Opens the export sheet as a standalone window. LSUIElement = true ⇒ activate
