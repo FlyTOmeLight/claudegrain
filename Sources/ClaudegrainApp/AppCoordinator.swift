@@ -16,6 +16,10 @@ final class AppCoordinator {
     private let dataSource: DataSourceCoordinator
     private let notifications: NotificationManager
     private let forecaster = Forecaster()
+    /// JSONL P90 fallback per ADR-0001. Wired in production for the first
+    /// time in v0.2 — previously declared but never called, leaving users
+    /// without OAuth credentials stuck on `0% session` forever.
+    private let estimator: LimitEstimator
     private var ingestTask: Task<Void, Never>?
     private var dataSourceTask: Task<Void, Never>?
 
@@ -48,6 +52,7 @@ final class AppCoordinator {
         }
         self.ingest = IngestActor(db: db)
         self.dataSource = DataSourceCoordinator()
+        self.estimator = LimitEstimator(db: db)
 
         // Reuse the BudgetStore owned by AppModel so the Settings UI and
         // the NotificationManager observe the same instance.
@@ -234,7 +239,26 @@ final class AppCoordinator {
         }
         notifications.evaluateBurnRate(session: model.sessionBlock, forecast: model.forecastBlock)
 
+        await fillJSONLFallbackIfNeeded()
         await writeWidgetSnapshotIfDue()
+    }
+
+    /// JSONL P90 fallback. When OAuth path is not live (boot, no creds,
+    /// 4xx, deprecated), populate sessionBlock + weekly from local jsonl
+    /// history so the popover shows numbers instead of `—`. OAuth (when it
+    /// later succeeds) overrides on next snapshot.
+    private func fillJSONLFallbackIfNeeded() async {
+        guard model.dataSourceStatus != .oauthLive else { return }
+        if model.sessionBlock == nil {
+            if let s = try? await estimator.estimateSessionBlock() {
+                model.sessionBlock = s
+            }
+        }
+        if model.weekly == nil {
+            if let w = try? await estimator.estimateWeekly() {
+                model.weekly = w
+            }
+        }
     }
 
     /// Builds a `WidgetSnapshot` from the current `AppModel` state and writes
