@@ -4,6 +4,55 @@ All notable changes to **claudegrain** are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6-rc7] — 2026-05-10
+
+Phase 4 of v0.2 — desktop widget. Adds a WidgetKit extension
+(small / medium / large) backed by a single JSON snapshot the host
+app writes into an App Group container. Restructures the build
+system to support the embedded `.appex`.
+
+### Added
+- `Sources/ClaudegrainCore/Widget/WidgetSnapshot.swift` —
+  `Codable` cross-process contract: hero metrics + 7-day spend
+  array + top-3 repos + cache hit. Schema versioned; readers
+  drop snapshots from a higher version (rollback-safe).
+- `WidgetSnapshotIO` — atomic writer/reader resolving the App
+  Group container `group.dev.claudegrain.shared`. Falls back to
+  Application Support for SwiftPM-only dev runs.
+- `Sources/ClaudegrainWidget/` — new `.appex` target.
+  - `ClaudegrainWidgetBundle` (@main) + `ClaudegrainSpendWidget`.
+  - `WidgetSnapshotProvider` (`TimelineProvider`) reads the host
+    file, returns `.after(15min)` policy, dims stale entries.
+  - `ClaudegrainEntryView` switching on `widgetFamily`. Three
+    layouts: hero %, hero + sparkline, hero + sparkline + top
+    repos + cache. EN/ZH inline localization (extension cannot
+    import host's `L`).
+- `AppCoordinator.writeWidgetSnapshotIfDue` — runs after every
+  `refreshDerivedNow()`, throttled to one disk write per 5 min,
+  followed by `WidgetCenter.shared.reloadAllTimelines()`.
+- `Claudegrain.xcodeproj` (committed, generated from
+  `project.yml` via `xcodegen`). Two targets: ClaudegrainApp
+  (host) + ClaudegrainWidget (.appex). Both link the SwiftPM
+  `ClaudegrainCore` library.
+- App Group entitlement on both targets.
+- ADR-0011 (widget packaging — Xcode project alongside SwiftPM)
+  + ADR-0012 (widget snapshot contract).
+
+### Changed
+- `scripts/build-dmg.sh` now builds via `xcodebuild` (regenerates
+  the project with `xcodegen` first). `--deep` codesign handles
+  the embedded `.appex`. New `DEVELOPMENT_TEAM` env required for
+  the App Group entitlement to validate at runtime.
+- `Package.swift` — `ClaudegrainApp` excludes `Info.plist` +
+  `Claudegrain.entitlements` and links `WidgetKit` so
+  `swift build` continues to work.
+
+### Verification
+- `swift build` clean
+- `swift test` 99/99 green (6 new `WidgetSnapshotTests`)
+- `xcodebuild Claudegrain` (Release): BUILD SUCCEEDED for both
+  targets
+
 ## [0.1.6-rc6] — 2026-05-10
 
 Phase 5 of v0.2 (polish — partial). Settings UI cleanup + popover
