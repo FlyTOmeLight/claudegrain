@@ -232,9 +232,18 @@ final class AppCoordinator {
         if let session = snapshot.session { model.sessionBlock = session }
         if let weekly = snapshot.weekly { model.weekly = weekly }
         switch snapshot.state {
-        case .oauthLive: model.dataSourceStatus = .oauthLive
-        case .jsonlOnly, .oauthAuthError, .oauthDeprecated:
+        case .oauthLive:
+            model.dataSourceStatus = .oauthLive
+            model.lastOAuthSyncAt = Date()
+            model.oauthDegraded = false
+        case .jsonlOnly:
             model.dataSourceStatus = .jsonlOnly
+            model.oauthDegraded = false
+        case .oauthAuthError, .oauthDeprecated:
+            // ADR-0004: real-time path collapsed permanently or until reauth.
+            // UI surfaces a banner so the user knows quotas are estimates.
+            model.dataSourceStatus = .jsonlOnly
+            model.oauthDegraded = true
         case .oauthBackoff:
             // Keep the prior status; the snapshot UI shows "stale" until next tick succeeds.
             break

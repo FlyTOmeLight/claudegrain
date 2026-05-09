@@ -114,6 +114,9 @@ enum L: String, Hashable {
     // v0.2 — empty states
     case chartCollectingBaseline
     case topReposWatching
+    case oauthDegradedTitle
+    case oauthDegradedDismiss
+    case statusAsOf
 
     // Settings — tabs
     case settingsGeneral
@@ -271,6 +274,9 @@ enum L10n {
 
         .chartCollectingBaseline:   "Collecting 7-day baseline…",
         .topReposWatching:          "watching ~/.claude/projects…",
+        .oauthDegradedTitle:        "Real-time quota disabled — showing JSONL estimate.",
+        .oauthDegradedDismiss:      "Dismiss",
+        .statusAsOf:                "as of %@",
 
         .settingsGeneral: "General",
         .settingsNotifications: "Notifications",
@@ -412,6 +418,9 @@ enum L10n {
 
         .chartCollectingBaseline:   "正在采集 7 天基线…",
         .topReposWatching:          "监听 ~/.claude/projects…",
+        .oauthDegradedTitle:        "实时配额已停用 — 当前为 JSONL 估算值。",
+        .oauthDegradedDismiss:      "关闭",
+        .statusAsOf:                "(于 %@)",
 
         .settingsGeneral: "通用",
         .settingsNotifications: "通知",

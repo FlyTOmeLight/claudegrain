@@ -17,6 +17,12 @@ final class AppModel: ObservableObject {
     @Published var weekDelta: WeekDelta?
     @Published var modelMix: [ModelFamily: Double] = [:]
     @Published var dataSourceStatus: DataSourceStatus = .unknown
+    /// Set whenever the OAuth path returns a fresh snapshot. Used to surface
+    /// "as of HH:MM" subtitle when we fall off OAuth onto JSONL estimates.
+    @Published var lastOAuthSyncAt: Date?
+    /// True when OAuth has hit `oauthAuthError` or `oauthDeprecated`. UI shows
+    /// a banner pointing the user to re-authenticate (ADR-0004).
+    @Published var oauthDegraded: Bool = false
     @Published var isRefreshing: Bool = false
     @Published var heroMode: HeroMode = .today
 

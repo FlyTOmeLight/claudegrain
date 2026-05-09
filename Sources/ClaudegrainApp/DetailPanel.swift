@@ -97,6 +97,11 @@ private struct ReceiptBody: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
+            if model.oauthDegraded {
+                OAuthDegradedBanner()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             DoubleDivider()
 
             HeroSpend(yesterdayCost: 7.5)
@@ -175,6 +180,7 @@ private struct ReceiptBody: View {
         }
         .animation(.cgMedium, value: model.pauseController.isPaused)
         .animation(.cgMedium, value: model.forecastBlock?.basis)
+        .animation(.cgMedium, value: model.oauthDegraded)
     }
 
     /// Real 7d spend series. Empty when ingest hasn't populated yet — caller
@@ -210,6 +216,12 @@ private struct HeaderStrip: View {
                 .font(.cgMonoSmall)
                 .tracking(1.8)
                 .foregroundStyle(theme.inkBold.opacity(0.7))
+            if let asOf = staleAsOfLabel {
+                Text(asOf)
+                    .font(.cgMonoXSmall)
+                    .tracking(1)
+                    .foregroundStyle(theme.inkBold.opacity(0.55))
+            }
             Spacer()
             // 1 Hz live clock. TimelineView pauses automatically when the
             // popover (and therefore this view) is offscreen.
@@ -238,6 +250,17 @@ private struct HeaderStrip: View {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss"
         return f
+    }
+
+    /// "as of HH:MM" suffix shown only when the displayed snapshot was
+    /// produced by OAuth but we're no longer live (backoff, jsonl-only, etc.).
+    /// Hidden when status is .oauthLive or lastOAuthSyncAt is nil (cold start).
+    private var staleAsOfLabel: String? {
+        guard model.dataSourceStatus != .oauthLive,
+              let last = model.lastOAuthSyncAt else { return nil }
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return String(format: model.t(.statusAsOf), f.string(from: last))
     }
 
     private var timeA11yFormatter: DateFormatter {
@@ -783,6 +806,48 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             model.preferences.notificationSoundChoice = .imported(path: url.path)
         }
+    }
+}
+
+/// Surfaces ADR-0004's OAuth-deprecated/auth-error states. Triggered when
+/// `model.oauthDegraded == true`. Persists until the user dismisses (local
+/// state) or OAuth recovers (coordinator clears the flag on next live tick).
+private struct OAuthDegradedBanner: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("⚠")
+                .font(.cgMonoSmall.weight(.bold))
+                .foregroundStyle(theme.warn)
+            Text(model.t(.oauthDegradedTitle))
+                .font(.cgMonoSmall)
+                .tracking(0.6)
+                .foregroundStyle(theme.inkBold)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button(model.t(.oauthDegradedDismiss)) {
+                model.oauthDegraded = false
+            }
+            .buttonStyle(.plain)
+            .font(.cgMonoSmall.weight(.bold))
+            .foregroundStyle(theme.paperBg)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(theme.inkBold)
+            .cornerRadius(2)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(theme.warn.opacity(0.12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(theme.warn.opacity(0.5), lineWidth: 0.5)
+        )
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
     }
 }
 
