@@ -4,6 +4,22 @@ All notable changes to **claudegrain** are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6-rc10] — 2026-05-10
+
+Phase 5 polish — final batch.
+
+### Added
+- ESC key closes the popover (T02). NSEvent local monitor wired
+  by `StatusItemController` while popover is shown; click-outside
+  via `.transient` was the only previous path.
+
+### Changed
+- Cold-start vitals (T06): `VitalRow.percent` is now
+  `Optional<Double>`. Session / Weekly rows render `—%` with no
+  ascii bar when the snapshot hasn't been computed yet, instead
+  of a misleading `0%`. VoiceOver label switches to
+  `<vital>: unknown`.
+
 ## [0.1.6-rc9] — 2026-05-10
 
 CI fix only — bumps runner from `macos-14` to `macos-15` so the
