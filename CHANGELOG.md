@@ -4,6 +4,29 @@ All notable changes to **claudegrain** are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6-rc11] — 2026-05-10
+
+Three correctness fixes after rc10 manual QA:
+
+### Fixed
+- **LimitEstimator JSONL fallback now wired into AppCoordinator**
+  (was declared in v0.1 but never called). Users without `claude
+  /login` OAuth credentials previously saw `0% session` /
+  `0% weekly` indefinitely; now populated from local jsonl P90
+  history per ADR-0001's three-tier model. Same path also fills
+  in during boot before OAuth's first response lands.
+- **Widget V18 Phosphor styling**. Initial widget rendering used
+  SwiftUI defaults (system fonts, blue sparkline, gray bg) — looked
+  like a different product. Now mirrors the popover's phosphor
+  palette (paper, ink, inkBold, warn, crit) with scanline overlay,
+  hero glow, neon sparkline, severity-tinted hero metric, and
+  receipt-style dividers.
+- **`.unknown` → `.jsonlOnly` promotion when fallback fires**.
+  Stuck `.checking` state (silent OAuth hang at boot) used to
+  leave the header reading `BOOT…` even though sessionBlock was
+  already populated. Header now flips to `JSONL` once the fallback
+  succeeds; OAuth still overrides on next live snapshot.
+
 ## [0.1.6-rc10] — 2026-05-10
 
 Phase 5 polish — final batch.
