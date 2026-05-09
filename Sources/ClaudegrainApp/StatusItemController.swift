@@ -26,6 +26,11 @@ final class StatusItemController: ObservableObject {
     /// refresh flag, …); without a guard, every publish forces a redraw.
     private var lastButtonSig: String?
 
+    /// Local NSEvent monitor active while the popover is shown. Captures ESC
+    /// and closes the popover. NSPopover.behavior = .transient handles
+    /// click-outside; ESC was the gap.
+    private var escMonitor: Any?
+
     func attach(model: AppModel) {
         self.model = model
         statusItem.length = NSStatusItem.variableLength
@@ -138,11 +143,36 @@ final class StatusItemController: ObservableObject {
     private func togglePopover(_ sender: AnyObject?) {
         guard let button = statusItem.button else { return }
         if popover.isShown {
-            popover.performClose(sender)
+            closePopover(sender)
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
+            installEscMonitor()
         }
+    }
+
+    private func closePopover(_ sender: AnyObject?) {
+        popover.performClose(sender)
+        removeEscMonitor()
+    }
+
+    private func installEscMonitor() {
+        removeEscMonitor()
+        // keyCode 53 = Escape. Returning nil swallows the event so it doesn't
+        // beep; `self` retains the monitor while popover is shown.
+        escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            if event.keyCode == 53, self.popover.isShown {
+                self.closePopover(nil)
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func removeEscMonitor() {
+        if let m = escMonitor { NSEvent.removeMonitor(m) }
+        escMonitor = nil
     }
 
     private func showContextMenu(from button: NSStatusBarButton) {

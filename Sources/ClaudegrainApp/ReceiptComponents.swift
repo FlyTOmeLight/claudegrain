@@ -274,10 +274,15 @@ struct ModelStackBar: View {
 
 struct VitalRow: View {
     let label: String
-    let percent: Double
+    /// `nil` ⇒ unknown (cold start, OAuth not yet polled). Renders `—%`
+    /// without a bar, communicating "checking" rather than 0%.
+    let percent: Double?
     let resetText: String
     let isWarn: Bool
     @Environment(\.theme) private var theme
+
+    private var displayPct: Double { percent ?? 0 }
+    private var isUnknown: Bool { percent == nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -291,15 +296,20 @@ struct VitalRow: View {
                         .foregroundStyle(theme.ink.opacity(0.7))
                 }
                 .frame(width: 88, alignment: .leading)
-                Text(asciiBar)
-                    .font(.cgMono)
-                    .foregroundStyle(barColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityHidden(true)
-                Text("\(Int((percent * 100).rounded()))%")
+                if isUnknown {
+                    Text("")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(asciiBar)
+                        .font(.cgMono)
+                        .foregroundStyle(barColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityHidden(true)
+                }
+                Text(isUnknown ? "—%" : "\(Int((displayPct * 100).rounded()))%")
                     .font(.custom("JetBrains Mono", size: 12).weight(.bold))
-                    .foregroundStyle(barColor)
-                    .neonGlow(color: barColor, radius: 2, opacity: theme.glowEnabled ? 0.4 : 0)
+                    .foregroundStyle(isUnknown ? theme.ink.opacity(0.5) : barColor)
+                    .neonGlow(color: barColor, radius: 2, opacity: theme.glowEnabled && !isUnknown ? 0.4 : 0)
                     .frame(width: 38, alignment: .trailing)
             }
             Text(resetText)
@@ -308,7 +318,9 @@ struct VitalRow: View {
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(label): \(Int((percent * 100).rounded())) percent")
+        .accessibilityLabel(isUnknown
+            ? "\(label): unknown"
+            : "\(label): \(Int((displayPct * 100).rounded())) percent")
         .accessibilityValue(resetText)
     }
 
@@ -316,7 +328,7 @@ struct VitalRow: View {
 
     private var asciiBar: String {
         let total = 19
-        let filled = Int((percent * Double(total)).rounded())
+        let filled = Int((displayPct * Double(total)).rounded())
         return String(repeating: "█", count: filled) + String(repeating: "░", count: total - filled)
     }
 }

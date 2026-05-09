@@ -125,13 +125,13 @@ private struct ReceiptBody: View {
             VStack(spacing: 2) {
                 VitalRow(
                     label: model.t(.vitalSession),
-                    percent: model.sessionBlock?.usedFraction ?? 0,
+                    percent: model.sessionBlock?.usedFraction,
                     resetText: model.sessionBlock?.resetCountdown ?? "—",
                     isWarn: (model.sessionBlock?.usedFraction ?? 0) >= 0.7
                 )
                 VitalRow(
                     label: model.t(.vitalWeekly),
-                    percent: model.weekly?.usedFraction ?? 0,
+                    percent: model.weekly?.usedFraction,
                     resetText: model.weekly?.resetLabel ?? "—",
                     isWarn: (model.weekly?.usedFraction ?? 0) >= 0.85
                 )
