@@ -14,8 +14,9 @@ struct ClaudegrainSpendWidget: Widget {
 
     var body: some WidgetConfiguration {
         StaticConfiguration(kind: kind, provider: WidgetSnapshotProvider()) { entry in
+            // ClaudegrainEntryView applies the V18 Phosphor background
+            // via .containerBackground itself — see ClaudegrainEntryView.swift.
             ClaudegrainEntryView(entry: entry)
-                .containerBackground(.background, for: .widget)
         }
         .configurationDisplayName("Claudegrain")
         .description("Live session block + today's spend.")

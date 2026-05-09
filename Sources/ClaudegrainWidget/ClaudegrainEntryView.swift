@@ -2,16 +2,47 @@ import SwiftUI
 import WidgetKit
 import ClaudegrainCore
 
+/// Phosphor palette mirrored from `Sources/ClaudegrainApp/Theme.swift`. The
+/// widget extension is a separate process and can't import the host's Theme
+/// directly; values match V18 Phosphor exactly so the widget reads as
+/// part of the same product.
+private enum Phos {
+    static let paper    = Color(red: 0x04 / 255, green: 0x06 / 255, blue: 0x0A / 255)
+    static let ink      = Color(red: 0xB8 / 255, green: 0xF0 / 255, blue: 0xD2 / 255)
+    static let inkBold  = Color(red: 0x6D / 255, green: 0xFF / 255, blue: 0xAE / 255)
+    static let inkFaint = Color(red: 0x5A / 255, green: 0x8A / 255, blue: 0x72 / 255)
+    static let warn     = Color(red: 0xFF / 255, green: 0xD2 / 255, blue: 0x4A / 255)
+    static let crit     = Color(red: 0xFF / 255, green: 0x5C / 255, blue: 0x5C / 255)
+}
+
 struct ClaudegrainEntryView: View {
     let entry: WidgetEntry
     @Environment(\.widgetFamily) private var family
 
     var body: some View {
-        switch family {
-        case .systemSmall:  SmallView(entry: entry)
-        case .systemMedium: MediumView(entry: entry)
-        case .systemLarge:  LargeView(entry: entry)
-        default:            SmallView(entry: entry)
+        Group {
+            switch family {
+            case .systemSmall:  SmallView(entry: entry)
+            case .systemMedium: MediumView(entry: entry)
+            case .systemLarge:  LargeView(entry: entry)
+            default:            SmallView(entry: entry)
+            }
+        }
+        .foregroundStyle(Phos.ink)
+        .containerBackground(for: .widget) {
+            ZStack {
+                Phos.paper
+                // Faint scanlines for the receipt feel — every 2pt.
+                Canvas { ctx, size in
+                    var y: CGFloat = 0
+                    let step: CGFloat = 2
+                    while y < size.height {
+                        let r = CGRect(x: 0, y: y, width: size.width, height: 0.5)
+                        ctx.fill(Path(r), with: .color(Phos.inkBold.opacity(0.04)))
+                        y += step
+                    }
+                }
+            }
         }
     }
 }
@@ -25,22 +56,32 @@ private struct SmallView: View {
         Int(((entry.snapshot.sessionBlockPercent ?? 0) * 100).rounded())
     }
 
+    private var heroColor: Color {
+        switch (entry.snapshot.sessionBlockPercent ?? 0) {
+        case ..<0.7:  return Phos.inkBold
+        case ..<0.9:  return Phos.warn
+        default:      return Phos.crit
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             HeaderRow(snapshot: entry.snapshot)
+            DividerLine()
             Spacer()
             Text("\(pct)%")
-                .font(.system(size: 38, weight: .bold, design: .monospaced))
-                .foregroundStyle(.primary)
+                .font(.system(size: 40, weight: .bold, design: .monospaced))
+                .foregroundStyle(heroColor)
+                .shadow(color: heroColor.opacity(0.5), radius: 6)
             Text(L.session(entry.snapshot.language))
-                .font(.system(size: 9, design: .monospaced))
-                .tracking(1.5)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(2)
+                .foregroundStyle(Phos.inkFaint)
             Spacer().frame(height: 4)
             if let resetText = resetCountdownText(entry.snapshot) {
                 Text(resetText)
                     .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(Phos.inkFaint)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -57,35 +98,54 @@ private struct MediumView: View {
         Int(((entry.snapshot.sessionBlockPercent ?? 0) * 100).rounded())
     }
 
+    private var heroColor: Color {
+        switch (entry.snapshot.sessionBlockPercent ?? 0) {
+        case ..<0.7:  return Phos.inkBold
+        case ..<0.9:  return Phos.warn
+        default:      return Phos.crit
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HeaderRow(snapshot: entry.snapshot)
+            DividerLine()
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("\(pct)%")
-                        .font(.system(size: 32, weight: .bold, design: .monospaced))
+                        .font(.system(size: 34, weight: .bold, design: .monospaced))
+                        .foregroundStyle(heroColor)
+                        .shadow(color: heroColor.opacity(0.5), radius: 5)
                     Text(L.session(entry.snapshot.language))
-                        .font(.system(size: 9, design: .monospaced))
-                        .tracking(1.5)
-                        .foregroundStyle(.secondary)
-                }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(String(format: "$%.2f \(L.today(entry.snapshot.language))",
-                                entry.snapshot.todayCostUSD))
-                        .font(.system(size: 12, weight: .semibold, design: .monospaced))
-                    Text("\(formatTokens(entry.snapshot.todayTokens)) \(L.tokens(entry.snapshot.language))")
-                        .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(2)
+                        .foregroundStyle(Phos.inkFaint)
                 }
                 Spacer()
+                VStack(alignment: .trailing, spacing: 2) {
+                    Text(String(format: "$%.2f", entry.snapshot.todayCostUSD))
+                        .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Phos.inkBold)
+                    Text(L.today(entry.snapshot.language).uppercased())
+                        .font(.system(size: 8, design: .monospaced))
+                        .tracking(1.4)
+                        .foregroundStyle(Phos.inkFaint)
+                    Text("\(formatTokens(entry.snapshot.todayTokens)) tok")
+                        .font(.system(size: 9, design: .monospaced))
+                        .foregroundStyle(Phos.inkFaint)
+                }
             }
             WidgetSparkline(values: entry.snapshot.weekSpend)
                 .frame(height: 24)
             HStack {
+                Text("7d")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(Phos.inkFaint)
                 Spacer()
                 Text(L.relative(entry.snapshot.generatedAt, language: entry.snapshot.language))
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundStyle(Phos.inkFaint.opacity(0.6))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -105,40 +165,56 @@ private struct LargeView: View {
         Int(((entry.snapshot.weeklyPercent ?? 0) * 100).rounded())
     }
 
+    private var heroColor: Color {
+        switch (entry.snapshot.sessionBlockPercent ?? 0) {
+        case ..<0.7:  return Phos.inkBold
+        case ..<0.9:  return Phos.warn
+        default:      return Phos.crit
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HeaderRow(snapshot: entry.snapshot)
+            DividerLine()
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 0) {
                     Text("\(pct)%")
-                        .font(.system(size: 30, weight: .bold, design: .monospaced))
+                        .font(.system(size: 32, weight: .bold, design: .monospaced))
+                        .foregroundStyle(heroColor)
+                        .shadow(color: heroColor.opacity(0.5), radius: 5)
                     Text(L.session(entry.snapshot.language))
-                        .font(.system(size: 9, design: .monospaced))
-                        .tracking(1.5)
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(2)
+                        .foregroundStyle(Phos.inkFaint)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 0) {
                     Text(String(format: "$%.2f", entry.snapshot.todayCostUSD))
                         .font(.system(size: 14, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(Phos.inkBold)
                     Text("\(L.cache(entry.snapshot.language)) \(Int((entry.snapshot.cacheHitRate * 100).rounded()))%")
                         .font(.system(size: 9, design: .monospaced))
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(Phos.inkFaint)
                 }
             }
             WidgetSparkline(values: entry.snapshot.weekSpend)
                 .frame(height: 28)
             HStack {
+                Text("7d")
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .tracking(1.4)
+                    .foregroundStyle(Phos.inkFaint)
+                Spacer()
                 Text("\(L.weekly(entry.snapshot.language)) \(weeklyPct)%")
                     .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                Spacer()
+                    .foregroundStyle(weeklyPct >= 90 ? Phos.crit : Phos.inkFaint)
             }
-            Divider().opacity(0.3)
+            DashedDivider()
             Text(L.topRepos(entry.snapshot.language))
-                .font(.system(size: 9, design: .monospaced))
-                .tracking(1.5)
-                .foregroundStyle(.secondary)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(2)
+                .foregroundStyle(Phos.inkFaint)
             VStack(spacing: 2) {
                 ForEach(entry.snapshot.topRepos, id: \.name) { repo in
                     RepoRow(repo: repo)
@@ -146,15 +222,15 @@ private struct LargeView: View {
                 if entry.snapshot.topRepos.isEmpty {
                     Text("—")
                         .font(.system(size: 11, design: .monospaced))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(Phos.inkFaint.opacity(0.6))
                 }
             }
             Spacer()
             HStack {
                 Spacer()
                 Text(L.relative(entry.snapshot.generatedAt, language: entry.snapshot.language))
-                    .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 8, design: .monospaced))
+                    .foregroundStyle(Phos.inkFaint.opacity(0.6))
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
@@ -168,28 +244,59 @@ private struct HeaderRow: View {
     let snapshot: WidgetSnapshot
 
     var body: some View {
-        HStack {
+        HStack(spacing: 4) {
             Text("CLAUDEGRAIN")
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .tracking(2)
-                .foregroundStyle(.primary)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .tracking(2.4)
+                .foregroundStyle(Phos.inkBold)
+                .shadow(color: Phos.inkBold.opacity(0.5), radius: 3)
             Spacer()
             Circle()
                 .fill(statusColor)
-                .frame(width: 6, height: 6)
-            Text(snapshot.dataSourceStatus.lowercased())
-                .font(.system(size: 8, design: .monospaced))
-                .foregroundStyle(.secondary)
+                .frame(width: 5, height: 5)
+                .shadow(color: statusColor.opacity(0.6), radius: 2)
+            Text(statusText.uppercased())
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .tracking(1.4)
+                .foregroundStyle(Phos.inkFaint)
         }
     }
 
     private var statusColor: Color {
         switch snapshot.dataSourceStatus {
-        case "oauthLive": return .green
-        case "jsonlOnly", "cliFallback": return .yellow
-        case "offline":   return .red
-        default:          return .gray
+        case "oauthLive": return Phos.inkBold
+        case "jsonlOnly", "cliFallback": return Phos.warn
+        case "offline":   return Phos.crit
+        default:          return Phos.inkFaint
         }
+    }
+
+    private var statusText: String {
+        switch snapshot.dataSourceStatus {
+        case "oauthLive":   return "live"
+        case "jsonlOnly":   return "jsonl"
+        case "cliFallback": return "cli"
+        case "offline":     return "offline"
+        default:            return "boot"
+        }
+    }
+}
+
+private struct DividerLine: View {
+    var body: some View {
+        Rectangle()
+            .fill(Phos.inkFaint.opacity(0.4))
+            .frame(height: 0.5)
+    }
+}
+
+private struct DashedDivider: View {
+    var body: some View {
+        Text(String(repeating: "╌", count: 30))
+            .font(.system(size: 8, design: .monospaced))
+            .foregroundStyle(Phos.inkFaint.opacity(0.5))
+            .lineLimit(1)
+            .clipped()
     }
 }
 
@@ -202,13 +309,14 @@ private struct RepoRow: View {
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .font(.system(size: 11, design: .monospaced))
+                .foregroundStyle(Phos.ink)
                 .frame(maxWidth: .infinity, alignment: .leading)
             Text(String(format: "$%.2f", repo.costUSD))
-                .font(.system(size: 11, design: .monospaced))
-                .foregroundStyle(.secondary)
-                .frame(width: 50, alignment: .trailing)
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(Phos.inkBold)
+                .frame(width: 56, alignment: .trailing)
             BarStrip(percent: repo.percentOfDay)
-                .frame(width: 36, height: 6)
+                .frame(width: 36, height: 7)
         }
     }
 }
@@ -220,10 +328,11 @@ private struct BarStrip: View {
         GeometryReader { geo in
             ZStack(alignment: .leading) {
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.secondary.opacity(0.2))
+                    .fill(Phos.inkFaint.opacity(0.25))
                 RoundedRectangle(cornerRadius: 1)
-                    .fill(Color.accentColor)
+                    .fill(Phos.inkBold)
                     .frame(width: geo.size.width * percent)
+                    .shadow(color: Phos.inkBold.opacity(0.6), radius: 2)
             }
         }
     }
@@ -237,20 +346,35 @@ private struct WidgetSparkline: View {
             if values.count < 2 {
                 Text("—")
                     .font(.system(size: 9, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(Phos.inkFaint.opacity(0.6))
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 let maxV = (values.max() ?? 1).clamped(min: 0.01)
-                let stride = geo.size.width / CGFloat(max(1, values.count - 1))
-                Path { p in
+                let step = geo.size.width / CGFloat(max(1, values.count - 1))
+                let path = Path { p in
                     for (i, v) in values.enumerated() {
-                        let x = CGFloat(i) * stride
+                        let x = CGFloat(i) * step
                         let y = geo.size.height * (1 - CGFloat(v / maxV))
                         if i == 0 { p.move(to: CGPoint(x: x, y: y)) }
                         else      { p.addLine(to: CGPoint(x: x, y: y)) }
                     }
                 }
-                .stroke(Color.accentColor, lineWidth: 1.5)
+                ZStack {
+                    // Glow underlay.
+                    path.stroke(Phos.inkBold.opacity(0.4), lineWidth: 4)
+                        .blur(radius: 3)
+                    path.stroke(Phos.inkBold, lineWidth: 1.5)
+                    // Trailing dot — current point.
+                    if let last = values.last {
+                        let x = geo.size.width
+                        let y = geo.size.height * (1 - CGFloat(last / maxV))
+                        Circle()
+                            .fill(Phos.inkBold)
+                            .frame(width: 5, height: 5)
+                            .position(x: x - 1, y: y)
+                            .shadow(color: Phos.inkBold.opacity(0.7), radius: 3)
+                    }
+                }
             }
         }
     }
