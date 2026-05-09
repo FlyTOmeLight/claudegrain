@@ -94,6 +94,7 @@ private struct ReceiptBody: View {
 
             if model.pauseController.isPaused {
                 PauseBanner()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
             DoubleDivider()
@@ -104,6 +105,7 @@ private struct ReceiptBody: View {
             if model.forecastBlock?.basis != .insufficient {
                 ForecastBadge(forecast: model.forecastBlock, labelKey: .forecastBlockHits)
                     .padding(.top, 2)
+                    .transition(.opacity)
             }
 
             DashedDivider()
@@ -139,7 +141,11 @@ private struct ReceiptBody: View {
             DashedDivider()
 
             SectionHeader(label: model.t(.sectionSpend7d))
-            WeekLineChart(points: weekPoints, todayValue: model.todayTotals.costUSD)
+            if weekPoints.isEmpty {
+                WeekChartPlaceholder()
+            } else {
+                WeekLineChart(points: weekPoints, todayValue: model.todayTotals.costUSD)
+            }
             WeekDayLabels()
 
             StarsDivider()
@@ -167,15 +173,15 @@ private struct ReceiptBody: View {
 
             FooterBlock()
         }
+        .animation(.cgMedium, value: model.pauseController.isPaused)
+        .animation(.cgMedium, value: model.forecastBlock?.basis)
     }
 
+    /// Real 7d spend series. Empty when ingest hasn't populated yet — caller
+    /// renders a "collecting baseline" placeholder instead of fabricating a
+    /// ramp (which previously misled users into thinking the chart was real).
     private var weekPoints: [Double] {
-        guard model.weekSpend.count == 7 else {
-            // Cold-start fallback before first ingest snapshot lands.
-            let today = max(model.todayTotals.costUSD, 0.5)
-            return [today * 0.5, today * 0.7, today * 0.4, today * 0.85, today * 0.75, today * 0.6, today]
-        }
-        return model.weekSpend
+        model.weekSpend.count == 7 ? model.weekSpend : []
     }
 
     private var cacheBaselineLabel: String {
@@ -234,15 +240,24 @@ private struct TopCostsList: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            ForEach(Array(model.topRepos.prefix(5).enumerated()), id: \.offset) { idx, repo in
-                CostRow(
-                    rank: idx + 1,
-                    type: "[R]",
-                    name: repo.repo,
-                    costUSD: repo.costUSD,
-                    deltaPct: deltaPct(for: repo),
-                    sparkPoints: sparkPoints(for: repo)
-                )
+            if model.topRepos.isEmpty {
+                Text(model.t(.topReposWatching))
+                    .font(.cgMonoSmall)
+                    .tracking(0.6)
+                    .foregroundStyle(theme.ink.opacity(0.55))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            } else {
+                ForEach(Array(model.topRepos.prefix(5).enumerated()), id: \.offset) { idx, repo in
+                    CostRow(
+                        rank: idx + 1,
+                        type: "[R]",
+                        name: repo.repo,
+                        costUSD: repo.costUSD,
+                        deltaPct: deltaPct(for: repo),
+                        sparkPoints: sparkPoints(for: repo)
+                    )
+                }
             }
         }
     }
@@ -441,13 +456,27 @@ private struct FooterBlock: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 6) {
-                kbd("F2", model.t(.kbCfg)) { openSettingsWindow() }
+                kbd("F2", model.t(.kbCfg), shortcut: .fnF2) { openSettingsWindow() }
                 refreshButton
-                kbd("E", model.t(.kbExport)) { model.exportHandler?() }
-                kbd("P", model.t(.kbPause)) { model.pauseHandler?() }
-                kbd("F10", model.t(.kbQuit)) { NSApp.terminate(nil) }
+                kbd("E", model.t(.kbExport), shortcut: KeyEquivalent("e")) { model.exportHandler?() }
+                kbd("P", model.t(.kbPause), shortcut: KeyEquivalent("p")) { model.pauseHandler?() }
+                kbd("F10", model.t(.kbQuit), shortcut: .fnF10) { NSApp.terminate(nil) }
             }
             .padding(.top, 6)
+            // Hidden shortcut aliases — Cmd+, opens Settings (industry idiom),
+            // Cmd+R refreshes (parity with browsers/IDEs). Buttons are zero-size
+            // so they don't take layout but stay in the responder chain.
+            .background(
+                Group {
+                    Button("") { openSettingsWindow() }
+                        .keyboardShortcut(",", modifiers: .command)
+                    Button("") { triggerRefresh() }
+                        .keyboardShortcut("r", modifiers: .command)
+                }
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+            )
 
             if !model.commitments.entries.isEmpty {
                 Button(action: { model.commitmentsHandler?() }) {
@@ -541,14 +570,14 @@ private struct FooterBlock: View {
             .neonGlow(color: theme.inkBold, radius: 3, opacity: theme.glowEnabled ? 0.18 : 0)
         }
         .buttonStyle(.plain)
+        .keyboardShortcut(.fnF5, modifiers: [])
+        .help("\(model.t(.kbRefresh)) (F5 / ⌘R)")
         .onChange(of: model.isRefreshing) { _, isRefreshing in
             if isRefreshing {
                 spinAngle = 0
-                withAnimation(.linear(duration: 0.7).repeatForever(autoreverses: false)) {
-                    spinAngle = 360
-                }
+                withAnimation(.cgSpin) { spinAngle = 360 }
             } else {
-                withAnimation(.easeOut(duration: 0.2)) { spinAngle = 0 }
+                withAnimation(.cgFast) { spinAngle = 0 }
             }
         }
     }
@@ -569,7 +598,13 @@ private struct FooterBlock: View {
         }
     }
 
-    private func kbd(_ key: String, _ desc: String, action: @escaping () -> Void) -> some View {
+    private func kbd(
+        _ key: String,
+        _ desc: String,
+        shortcut: KeyEquivalent? = nil,
+        modifiers: EventModifiers = [],
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Text(key)
@@ -595,6 +630,23 @@ private struct FooterBlock: View {
             .neonGlow(color: theme.inkBold, radius: 3, opacity: theme.glowEnabled ? 0.18 : 0)
         }
         .buttonStyle(.plain)
+        .help("\(desc) (\(key))")
+        .modifier(OptionalKeyboardShortcut(key: shortcut, modifiers: modifiers))
+    }
+}
+
+/// Applies a keyboardShortcut only when a key is supplied. Avoids the
+/// SwiftUI 4 limitation that you can't pass `KeyEquivalent?` directly.
+private struct OptionalKeyboardShortcut: ViewModifier {
+    let key: KeyEquivalent?
+    let modifiers: EventModifiers
+
+    func body(content: Content) -> some View {
+        if let key {
+            content.keyboardShortcut(key, modifiers: modifiers)
+        } else {
+            content
+        }
     }
 }
 

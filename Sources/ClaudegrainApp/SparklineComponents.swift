@@ -86,6 +86,24 @@ struct WeekLineChart: View {
     }
 }
 
+/// Empty-state placeholder for the 7d chart. Renders when ingest hasn't
+/// populated `weekSpend` yet — replaces a previous fake-ramp fallback that
+/// misled users into thinking they were looking at real data.
+struct WeekChartPlaceholder: View {
+    @Environment(\.theme) private var theme
+    @EnvironmentObject private var model: AppModel
+
+    var body: some View {
+        Text(model.t(.chartCollectingBaseline))
+            .font(.cgMonoSmall)
+            .tracking(0.6)
+            .foregroundStyle(theme.ink.opacity(0.55))
+            .frame(maxWidth: .infinity, alignment: .center)
+            .frame(height: 56)
+            .accessibilityLabel(model.t(.chartCollectingBaseline))
+    }
+}
+
 /// 7d day labels strip (M T W T F S S). Sunday bold neon.
 struct WeekDayLabels: View {
     @Environment(\.theme) private var theme

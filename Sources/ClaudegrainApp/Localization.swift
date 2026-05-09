@@ -111,6 +111,10 @@ enum L: String, Hashable {
     case commitmentsStatusIgnored
     case commitmentsFooterLink
 
+    // v0.2 — empty states
+    case chartCollectingBaseline
+    case topReposWatching
+
     // Settings — tabs
     case settingsGeneral
     case settingsNotifications
@@ -265,6 +269,9 @@ enum L10n {
         .commitmentsStatusIgnored:  "ignored",
         .commitmentsFooterLink:     "Recent commitments [%d]",
 
+        .chartCollectingBaseline:   "Collecting 7-day baseline…",
+        .topReposWatching:          "watching ~/.claude/projects…",
+
         .settingsGeneral: "General",
         .settingsNotifications: "Notifications",
         .settingsAbout: "About",
@@ -402,6 +409,9 @@ enum L10n {
         .commitmentsStatusPaused:   "已暂停",
         .commitmentsStatusIgnored:  "已忽略",
         .commitmentsFooterLink:     "最近承诺 [%d]",
+
+        .chartCollectingBaseline:   "正在采集 7 天基线…",
+        .topReposWatching:          "监听 ~/.claude/projects…",
 
         .settingsGeneral: "通用",
         .settingsNotifications: "通知",

@@ -85,6 +85,7 @@ struct DoubleDivider: View {
             .font(.custom("JetBrains Mono", size: 11))
             .foregroundStyle(theme.ink.opacity(0.5))
             .padding(.vertical, 2)
+            .accessibilityHidden(true)
     }
 }
 
@@ -96,6 +97,7 @@ struct DashedDivider: View {
             .foregroundStyle(theme.ink.opacity(0.42))
             .tracking(0.5)
             .padding(.vertical, 2)
+            .accessibilityHidden(true)
     }
 }
 
@@ -107,6 +109,7 @@ struct StarsDivider: View {
             .foregroundStyle(theme.ink.opacity(0.32))
             .tracking(2)
             .padding(.vertical, 2)
+            .accessibilityHidden(true)
     }
 }
 
