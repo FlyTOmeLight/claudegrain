@@ -13,24 +13,32 @@ struct QuietHoursTab: View {
 
     var body: some View {
         Form {
-            Toggle(model.t(.quietHoursEnable), isOn: bindEnabled)
-            HStack {
-                Text(model.t(.quietHoursFrom))
-                DatePicker("", selection: bindStart, displayedComponents: .hourAndMinute)
-                    .labelsHidden()
-                Spacer()
-                Text(model.t(.quietHoursTo))
-                DatePicker("", selection: bindEnd, displayedComponents: .hourAndMinute)
-                    .labelsHidden()
+            Section {
+                Toggle(model.t(.quietHoursEnable), isOn: bindEnabled)
+            }
+
+            Section {
+                LabeledContent(model.t(.quietHoursFrom)) {
+                    DatePicker("", selection: bindStart, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
+                }
+                LabeledContent(model.t(.quietHoursTo)) {
+                    DatePicker("", selection: bindEnd, displayedComponents: .hourAndMinute)
+                        .labelsHidden()
+                }
             }
             .disabled(!current.enabled)
-            Text(model.t(.quietHoursDeviceLocal))
+
+            Section {
+                VStack(alignment: .leading, spacing: 6) {
+                    Label(model.t(.quietHoursDeviceLocal), systemImage: "clock")
+                    Text(model.t(.quietHoursDescription))
+                }
                 .font(.callout)
                 .foregroundStyle(.secondary)
-            Text(model.t(.quietHoursDescription))
-                .font(.callout)
-                .foregroundStyle(.secondary)
+            }
         }
+        .formStyle(.grouped)
         .padding()
         .onAppear { current = model.preferences.quietHours }
     }

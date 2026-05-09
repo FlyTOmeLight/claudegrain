@@ -17,42 +17,55 @@ struct BudgetsTab: View {
     var body: some View {
         Form {
             Section(model.t(.budgetsGlobalSection)) {
-                HStack {
-                    Text(model.t(.budgetsGlobalDaily))
-                    Spacer()
+                LabeledContent(model.t(.budgetsGlobalDaily)) {
                     TextField("$", value: Binding(
                         get: { budgets.globalDefaultDailyUSD },
                         set: { budgets.globalDefaultDailyUSD = $0 }
                     ), format: .number.precision(.fractionLength(2)))
-                        .frame(width: 80)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 90)
                         .multilineTextAlignment(.trailing)
                 }
             }
 
-            Section(model.t(.budgetsRepoSection)) {
-                if budgets.allBudgets.isEmpty && recentRepos.isEmpty {
+            Section {
+                if sortedRepoKeys.isEmpty {
                     Text(model.t(.budgetsEmpty))
                         .foregroundStyle(.secondary)
+                        .padding(.vertical, 4)
+                } else {
+                    BudgetHeaderRow()
+                    ForEach(sortedRepoKeys, id: \.self) { repo in
+                        BudgetRowView(budgets: budgets, repo: repo)
+                    }
                 }
-                ForEach(sortedRepoKeys, id: \.self) { repo in
-                    BudgetRowView(budgets: budgets, repo: repo)
-                }
+            } header: {
+                Text(model.t(.budgetsRepoSection))
             }
 
             Section(model.t(.budgetsAddSection)) {
-                HStack {
+                VStack(alignment: .leading, spacing: 8) {
                     TextField(model.t(.budgetsAddRepoPlaceholder), text: $newRepo)
-                    TextField("daily $", text: $newDaily).frame(width: 80)
-                    TextField("weekly $", text: $newWeekly).frame(width: 80)
-                    Button(model.t(.budgetsAddButton)) {
-                        let trimmed = newRepo.trimmingCharacters(in: .whitespaces)
-                        guard !trimmed.isEmpty else { return }
-                        budgets.setBudget(
-                            repo: trimmed,
-                            daily: Double(newDaily),
-                            weekly: Double(newWeekly)
-                        )
-                        newRepo = ""; newDaily = ""; newWeekly = ""
+                        .textFieldStyle(.roundedBorder)
+                    HStack {
+                        TextField("daily $", text: $newDaily)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                        TextField("weekly $", text: $newWeekly)
+                            .textFieldStyle(.roundedBorder)
+                            .frame(width: 100)
+                        Spacer()
+                        Button(model.t(.budgetsAddButton)) {
+                            let trimmed = newRepo.trimmingCharacters(in: .whitespaces)
+                            guard !trimmed.isEmpty else { return }
+                            budgets.setBudget(
+                                repo: trimmed,
+                                daily: Double(newDaily),
+                                weekly: Double(newWeekly)
+                            )
+                            newRepo = ""; newDaily = ""; newWeekly = ""
+                        }
+                        .disabled(newRepo.trimmingCharacters(in: .whitespaces).isEmpty)
                     }
                 }
             }
@@ -69,40 +82,81 @@ struct BudgetsTab: View {
     }
 }
 
+/// Column header for the per-repo budget table.
+private struct BudgetHeaderRow: View {
+    var body: some View {
+        HStack {
+            Text("Repo")
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Text("Daily")
+                .frame(width: 90, alignment: .trailing)
+            Text("Weekly")
+                .frame(width: 90, alignment: .trailing)
+            Spacer().frame(width: 24)
+        }
+        .font(.caption)
+        .foregroundStyle(.secondary)
+    }
+}
+
 /// One row per repo. Edits write through `BudgetStore.setBudget`.
+/// Configured rows show explicit values; unconfigured rows show
+/// the global default as TextField prompt so the user can tell at
+/// a glance which repos are using the override vs. inheriting.
 private struct BudgetRowView: View {
     @ObservedObject var budgets: BudgetStore
     let repo: String
 
+    private var isConfigured: Bool { budgets.allBudgets[repo] != nil }
+
     var body: some View {
         HStack {
-            Text(repo)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .lineLimit(1)
-                .truncationMode(.middle)
-            TextField("daily", value: dailyBinding,
-                      format: .number.precision(.fractionLength(2)))
-                .frame(width: 80)
-                .multilineTextAlignment(.trailing)
-            TextField("weekly", value: weeklyBinding,
-                      format: .number.precision(.fractionLength(2)))
-                .frame(width: 80)
-                .multilineTextAlignment(.trailing)
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(isConfigured ? Color.accentColor : Color.secondary.opacity(0.4))
+                    .frame(width: 6, height: 6)
+                Text(repo)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(repo)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            TextField(
+                "",
+                value: dailyBinding,
+                format: .number.precision(.fractionLength(2)),
+                prompt: Text(String(format: "%.2f", budgets.globalDefaultDailyUSD))
+                    .foregroundStyle(.tertiary)
+            )
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 90)
+            .multilineTextAlignment(.trailing)
+
+            TextField(
+                "",
+                value: weeklyBinding,
+                format: .number.precision(.fractionLength(2)),
+                prompt: Text("—").foregroundStyle(.tertiary)
+            )
+            .textFieldStyle(.roundedBorder)
+            .frame(width: 90)
+            .multilineTextAlignment(.trailing)
+
             Button(role: .destructive) {
                 budgets.removeBudget(repo: repo)
             } label: {
                 Image(systemName: "xmark.circle")
             }
             .buttonStyle(.borderless)
+            .disabled(!isConfigured)
+            .help(isConfigured ? "Remove override" : "No override to remove")
         }
     }
 
-    private var dailyBinding: Binding<Double> {
+    private var dailyBinding: Binding<Double?> {
         Binding(
-            get: {
-                budgets.allBudgets[repo]?.dailyUSD
-                    ?? budgets.globalDefaultDailyUSD
-            },
+            get: { budgets.allBudgets[repo]?.dailyUSD },
             set: { newValue in
                 budgets.setBudget(
                     repo: repo,
@@ -113,9 +167,9 @@ private struct BudgetRowView: View {
         )
     }
 
-    private var weeklyBinding: Binding<Double> {
+    private var weeklyBinding: Binding<Double?> {
         Binding(
-            get: { budgets.allBudgets[repo]?.weeklyUSD ?? 0 },
+            get: { budgets.allBudgets[repo]?.weeklyUSD },
             set: { newValue in
                 budgets.setBudget(
                     repo: repo,
