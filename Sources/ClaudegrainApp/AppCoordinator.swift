@@ -249,15 +249,23 @@ final class AppCoordinator {
     /// later succeeds) overrides on next snapshot.
     private func fillJSONLFallbackIfNeeded() async {
         guard model.dataSourceStatus != .oauthLive else { return }
+        var didFill = false
         if model.sessionBlock == nil {
             if let s = try? await estimator.estimateSessionBlock() {
                 model.sessionBlock = s
+                didFill = true
             }
         }
         if model.weekly == nil {
             if let w = try? await estimator.estimateWeekly() {
                 model.weekly = w
+                didFill = true
             }
+        }
+        // Promote stuck `.unknown` to `.jsonlOnly` once the fallback
+        // succeeds — keeps the header label honest about what's on screen.
+        if didFill && model.dataSourceStatus == .unknown {
+            model.dataSourceStatus = .jsonlOnly
         }
     }
 
