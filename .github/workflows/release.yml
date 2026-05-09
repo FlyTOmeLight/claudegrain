@@ -16,7 +16,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    # macos-15 ships Xcode 16+ which can read xcodegen's default
+    # objectVersion = 77. macos-14's Xcode 15.4 cannot.
+    runs-on: macos-15
     timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
