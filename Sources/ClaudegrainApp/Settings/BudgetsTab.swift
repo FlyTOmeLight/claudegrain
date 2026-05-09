@@ -30,9 +30,14 @@ struct BudgetsTab: View {
 
             Section {
                 if sortedRepoKeys.isEmpty {
-                    Text(model.t(.budgetsEmpty))
-                        .foregroundStyle(.secondary)
-                        .padding(.vertical, 4)
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(model.t(.budgetsEmpty))
+                            .foregroundStyle(.secondary)
+                        Text(model.t(.budgetsEmptyHint))
+                            .font(.callout)
+                            .foregroundStyle(.tertiary)
+                    }
+                    .padding(.vertical, 4)
                 } else {
                     BudgetHeaderRow()
                     ForEach(sortedRepoKeys, id: \.self) { repo in

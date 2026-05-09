@@ -117,6 +117,8 @@ enum L: String, Hashable {
     case oauthDegradedTitle
     case oauthDegradedDismiss
     case statusAsOf
+    case commitmentsEmptyHint
+    case budgetsEmptyHint
 
     // Settings — tabs
     case settingsGeneral
@@ -277,6 +279,8 @@ enum L10n {
         .oauthDegradedTitle:        "Real-time quota disabled — showing JSONL estimate.",
         .oauthDegradedDismiss:      "Dismiss",
         .statusAsOf:                "as of %@",
+        .commitmentsEmptyHint:      "Commitments are recorded when you respond to a repo-overspend notification with “Mark paused” or “Ignore”.",
+        .budgetsEmptyHint:          "Set a daily $ ceiling for any repo below — overspend triggers a notification.",
 
         .settingsGeneral: "General",
         .settingsNotifications: "Notifications",
@@ -421,6 +425,8 @@ enum L10n {
         .oauthDegradedTitle:        "实时配额已停用 — 当前为 JSONL 估算值。",
         .oauthDegradedDismiss:      "关闭",
         .statusAsOf:                "(于 %@)",
+        .commitmentsEmptyHint:      "当通知触发后,选择「已暂停」或「忽略」会在此处留下记录。",
+        .budgetsEmptyHint:          "为任意仓库设置日预算 $ 上限,超额会触发通知。",
 
         .settingsGeneral: "通用",
         .settingsNotifications: "通知",

@@ -11,9 +11,16 @@ struct CommitmentsSheet: View {
             Text(model.t(.commitmentsTitle))
                 .font(.headline)
             if log.entries.isEmpty {
-                Text(model.t(.commitmentsEmpty))
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 20)
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(model.t(.commitmentsEmpty))
+                        .foregroundStyle(.secondary)
+                    Text(model.t(.commitmentsEmptyHint))
+                        .font(.callout)
+                        .foregroundStyle(.tertiary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.vertical, 16)
+                .frame(maxWidth: .infinity, alignment: .leading)
             } else {
                 List(log.entries.reversed()) { c in
                     HStack {

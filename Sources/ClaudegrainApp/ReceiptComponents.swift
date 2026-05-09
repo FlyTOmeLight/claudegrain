@@ -153,7 +153,8 @@ struct HeroSpend: View {
                 .neonGlow(color: theme.inkBold, radius: 8, opacity: theme.glowEnabled ? 0.55 : 0)
                 .neonGlow(color: theme.inkBold, radius: 18, opacity: theme.glowEnabled ? 0.28 : 0)
                 .contentTransition(.numericText())
-                .animation(.easeOut(duration: 0.2), value: current.costUSD)
+                .animation(.cgFast, value: current.costUSD)
+                .accessibilityLabel(heroA11yLabel)
 
             HStack(spacing: 6) {
                 if model.heroMode == .today, yesterdayCost > 0 {
@@ -176,10 +177,23 @@ struct HeroSpend: View {
                 }
             }
             .padding(.top, 2)
+            .id(model.heroMode)
+            .transition(.opacity)
 
             ModelStackBar(byModel: current.byModel)
                 .padding(.top, 4)
+                .id(model.heroMode)
+                .transition(.opacity)
+                .accessibilityHidden(true)
         }
+        .animation(.cgFast, value: model.heroMode)
+    }
+
+    /// "$X.XX, today" / "$X.XX, all-time" — VoiceOver friendly.
+    private var heroA11yLabel: String {
+        let dollars = String(format: "$%.2f", current.costUSD)
+        let scope = model.heroMode == .today ? model.t(.heroTabToday) : model.t(.heroTabTotal)
+        return "\(dollars), \(scope)"
     }
 
     private var subLabel: String {
