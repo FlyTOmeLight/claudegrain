@@ -19,6 +19,9 @@ struct StencilTitleView: View {
             .multilineTextAlignment(.center)
             .lineSpacing(-1)
             .fixedSize(horizontal: true, vertical: false)
+            .accessibilityElement()
+            .accessibilityLabel("Claudegrain")
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -47,6 +50,7 @@ extension View {
 struct LiveDot: View {
     @State private var animate = false
     @Environment(\.theme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Circle()
@@ -55,8 +59,9 @@ struct LiveDot: View {
             .scaleEffect(animate ? 0.85 : 1)
             .opacity(animate ? 0.4 : 1)
             .neonGlow(color: theme.pulse, radius: 3, opacity: theme.glowEnabled ? 0.6 : 0)
-            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: animate)
-            .onAppear { animate = true }
+            .animation(Motion.preferred(.cgPulse, reduceMotion: reduceMotion), value: animate)
+            .onAppear { if !reduceMotion { animate = true } }
+            .accessibilityHidden(true)
     }
 }
 
@@ -276,6 +281,7 @@ struct VitalRow: View {
                     .font(.cgMono)
                     .foregroundStyle(barColor)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .accessibilityHidden(true)
                 Text("\(Int((percent * 100).rounded()))%")
                     .font(.custom("JetBrains Mono", size: 12).weight(.bold))
                     .foregroundStyle(barColor)
@@ -287,6 +293,9 @@ struct VitalRow: View {
                 .foregroundStyle(theme.ink.opacity(0.5))
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(label): \(Int((percent * 100).rounded())) percent")
+        .accessibilityValue(resetText)
     }
 
     private var barColor: Color { isWarn ? theme.warn : theme.inkBold }

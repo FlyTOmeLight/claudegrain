@@ -205,16 +205,23 @@ private struct HeaderStrip: View {
             Text("·")
                 .font(.cgMonoSmall)
                 .foregroundStyle(theme.inkBold.opacity(0.6))
+                .accessibilityHidden(true)
             Text(statusLabel)
                 .font(.cgMonoSmall)
                 .tracking(1.8)
                 .foregroundStyle(theme.inkBold.opacity(0.7))
             Spacer()
-            Text(timeString)
-                .font(.cgMonoSmall)
-                .tracking(1)
-                .foregroundStyle(theme.inkBold.opacity(0.7))
+            // 1 Hz live clock. TimelineView pauses automatically when the
+            // popover (and therefore this view) is offscreen.
+            TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
+                Text(timeFormatter.string(from: ctx.date))
+                    .font(.cgMonoSmall)
+                    .tracking(1)
+                    .foregroundStyle(theme.inkBold.opacity(0.7))
+                    .accessibilityLabel(timeA11yFormatter.string(from: ctx.date))
+            }
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var statusLabel: String {
@@ -227,10 +234,16 @@ private struct HeaderStrip: View {
         }
     }
 
-    private var timeString: String {
+    private var timeFormatter: DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss"
-        return f.string(from: Date())
+        return f
+    }
+
+    private var timeA11yFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        return f
     }
 }
 

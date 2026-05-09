@@ -21,6 +21,11 @@ final class StatusItemController: ObservableObject {
     private var observers: [NSKeyValueObservation] = []
     private var modelCancellable: AnyObject?
 
+    /// Memoized signature of the last applied button state. AppModel publishes
+    /// many fields the menu bar doesn't render (forecast, modelMix, weekDelta,
+    /// refresh flag, …); without a guard, every publish forces a redraw.
+    private var lastButtonSig: String?
+
     func attach(model: AppModel) {
         self.model = model
         statusItem.length = NSStatusItem.variableLength
@@ -85,11 +90,20 @@ final class StatusItemController: ObservableObject {
             valueText = "\(Int((model.cacheHitRate * 100).rounded()))%"
         }
         let frac = model.sessionBlock?.usedFraction ?? 0
-        let symbolName: String
+        let bucket = frac >= 0.9 ? 2 : (frac >= 0.7 ? 1 : 0)
+
+        // Drop redraw when nothing the user can see changed.
+        let sig = "\(metric.rawValue)|\(valueText)|\(bucket)"
+        if sig == lastButtonSig { return }
+        lastButtonSig = sig
+
+        let symbolName = "circle.fill"
         let tint: NSColor
-        if frac >= 0.9 { symbolName = "circle.fill"; tint = .systemRed }
-        else if frac >= 0.7 { symbolName = "circle.fill"; tint = .systemYellow }
-        else { symbolName = "circle.fill"; tint = .systemGreen }
+        switch bucket {
+        case 2: tint = .systemRed
+        case 1: tint = .systemYellow
+        default: tint = .systemGreen
+        }
 
         let config = NSImage.SymbolConfiguration(pointSize: 8, weight: .bold)
         let dotImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
