@@ -28,6 +28,12 @@ final class AppCoordinator {
     private var exportWindow: NSWindow?
     private var commitmentsWindow: NSWindow?
 
+    /// 5-minute throttle on widget-snapshot writes. WidgetKit budgets
+    /// ~40 timeline reloads/day; bursting on every JSONL ingest event
+    /// would burn that budget. See plan §4.
+    private var lastWidgetWriteAt: Date?
+    private static let widgetWriteInterval: TimeInterval = 5 * 60
+
     init(
         model: AppModel,
         notifications: NotificationManager? = nil,
@@ -226,6 +232,77 @@ final class AppCoordinator {
             model.forecastWeekly = await forecaster.forecastWeekly(weekly: weekly, recent: buckets)
         }
         notifications.evaluateBurnRate(session: model.sessionBlock, forecast: model.forecastBlock)
+
+        await writeWidgetSnapshotIfDue()
+    }
+
+    /// Builds a `WidgetSnapshot` from the current `AppModel` state and writes
+    /// it to the App Group container (or Application Support fallback in
+    /// dev). Throttled to once per `widgetWriteInterval` to stay inside
+    /// WidgetKit's reload budget.
+    private func writeWidgetSnapshotIfDue() async {
+        let now = Date()
+        if let last = lastWidgetWriteAt,
+           now.timeIntervalSince(last) < Self.widgetWriteInterval {
+            return
+        }
+
+        let snapshot = WidgetSnapshot(
+            generatedAt: now,
+            language: model.preferences.language.rawValue,
+            primaryMetric: model.primaryMetric.rawValue,
+            dataSourceStatus: dataSourceStatusString(model.dataSourceStatus),
+            sessionBlockPercent: model.sessionBlock?.usedFraction,
+            sessionBlockResetAt: model.sessionBlock?.resetsAt,
+            weeklyPercent: model.weekly?.usedFraction,
+            todayCostUSD: model.todayTotals.costUSD,
+            todayTokens: model.todayTotals.totalTokens,
+            weekSpend: model.weekSpend,
+            topRepos: model.topRepos.prefix(3).map { repo in
+                let pct = model.todayTotals.costUSD > 0
+                    ? min(1, repo.costUSD / model.todayTotals.costUSD)
+                    : 0
+                return WidgetSnapshot.Repo(name: repo.repo, costUSD: repo.costUSD, percentOfDay: pct)
+            },
+            cacheHitRate: model.cacheHitRate
+        )
+
+        let io = Self.resolveWidgetIO()
+        do {
+            try io.write(snapshot)
+            lastWidgetWriteAt = now
+        } catch {
+            // Snapshot writes are best-effort. Failure here just delays the
+            // widget update; the next scheduled refresh tries again.
+            NSLog("widget snapshot write failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Resolves the App Group container; falls back to Application Support
+    /// when the host isn't entitled (P4-T05 will land entitlements). The
+    /// widget extension can only read the App Group path, so this fallback
+    /// is dev-only — it lets us validate snapshot generation in SwiftPM
+    /// builds before the Xcode project + entitlements ship.
+    private static func resolveWidgetIO() -> WidgetSnapshotIO {
+        if let io = WidgetSnapshotIO.appGroupContainer() { return io }
+        let fm = FileManager.default
+        let support = (try? fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ).appendingPathComponent("claudegrain")) ?? fm.temporaryDirectory
+        return WidgetSnapshotIO(directory: support)
+    }
+
+    private func dataSourceStatusString(_ status: DataSourceStatus) -> String {
+        switch status {
+        case .oauthLive:    return "oauthLive"
+        case .jsonlOnly:    return "jsonlOnly"
+        case .cliFallback:  return "cliFallback"
+        case .offline:      return "offline"
+        case .unknown:      return "unknown"
+        }
     }
 
     private func applyDataSourceSnapshot(_ snapshot: DataSourceCoordinator.Snapshot) {
