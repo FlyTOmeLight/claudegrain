@@ -4,6 +4,62 @@ All notable changes to **claudegrain** are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6-rc6] — 2026-05-10
+
+Phase 5 of v0.2 (polish — partial). Settings UI cleanup + popover
+keyboard shortcuts + accessibility + OAuth-degraded surfacing.
+
+### Added
+- Real keyboard shortcuts on the popover footer: `F2` (Settings),
+  `F5` / `⌘R` (Refresh), `E` (Export), `P` (Pause/Resume),
+  `F10` (Quit). `⌘,` aliases Settings. Tooltips on every footer
+  button show the key hint.
+- `WeekChartPlaceholder` for the 7-day chart cold-start state —
+  replaces the previous synthesized ramp that misled users into
+  thinking they were looking at real data.
+- Cold-start empty state for `TopCostsList`
+  ("watching ~/.claude/projects…").
+- `OAuthDegradedBanner` surfaces ADR-0004's `oauthAuthError` /
+  `oauthDeprecated` states with a dismiss button — ends silent
+  fallback to JSONL estimates.
+- "as of HH:MM" stale-subtitle in the header strip whenever the
+  display has dropped off `oauthLive`.
+- Live 1 Hz clock in header (was previously frozen between events).
+- VoiceOver labels on `VitalRow` (`<label>: N percent` + reset
+  countdown) and `HeroSpend` (`$X.XX, today/all-time`). Decorative
+  dividers + ASCII bars are now `accessibilityHidden`.
+- `LiveDot` pulse and other looping animations now respect
+  `accessibilityReduceMotion`.
+- Animation tokens (`Animation.cgFast` / `cgMedium` / `cgSlow` /
+  `cgSpin` / `cgPulse`) in `Motion.swift`. Source of truth for all
+  view animation timings.
+- `KeyEquivalent.fnF2` / `.fnF5` / `.fnF10` helper extension.
+- Empty-state hint copy on `CommitmentsSheet` and `BudgetsTab`.
+
+### Changed
+- `BudgetsTab` row UX: configured rows now visually distinct from
+  default-inheriting rows (accent dot + filled vs. prompt-only
+  TextField). Drops misleading `0.00` weekly placeholder for `—`.
+  Bindings switched to `Optional<Double>` so prompts render the
+  global default. Add section reorganized; Add button disabled
+  until repo path is non-empty.
+- `QuietHoursTab` adopts `Section` grouping + `.formStyle(.grouped)`
+  for parity with `BudgetsTab`.
+- `PauseBanner`, `ForecastBadge`, `OAuthDegradedBanner` now
+  insert/remove with `.opacity` + `.move(edge: .top)` transitions
+  at `cgMedium`.
+- `HeroSpend` mode-switch (TOTAL ↔ TODAY) cross-fades sub-label +
+  `ModelStackBar` in lockstep with the numeric cost transition.
+- `StatusItemController.updateButton` memoizes the visible
+  `(metric, valueText, severity-bucket)` signature; menu bar redraw
+  count drops sharply on busy `AppModel` publish streams.
+
+### Docs
+- `docs/plans/v0.2-phase4-widget.md` — WidgetKit extension via
+  Xcode project restructure plan (14 TDD tasks, ADR draft).
+- `docs/plans/v0.2-phase5-polish.md` — full polish audit with
+  P0/P1/P2 priority matrix and 19 task breakdown.
+
 ## [0.1.6-rc5] — 2026-05-05
 
 Phase 3 of v0.2 — control. Adds proactive notification + ingestion
