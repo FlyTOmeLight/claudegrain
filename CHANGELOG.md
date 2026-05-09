@@ -4,6 +4,170 @@ All notable changes to **claudegrain** are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6-rc10] — 2026-05-10
+
+Phase 5 polish — final batch.
+
+### Added
+- ESC key closes the popover (T02). NSEvent local monitor wired
+  by `StatusItemController` while popover is shown; click-outside
+  via `.transient` was the only previous path.
+
+### Changed
+- Cold-start vitals (T06): `VitalRow.percent` is now
+  `Optional<Double>`. Session / Weekly rows render `—%` with no
+  ascii bar when the snapshot hasn't been computed yet, instead
+  of a misleading `0%`. VoiceOver label switches to
+  `<vital>: unknown`.
+
+## [0.1.6-rc9] — 2026-05-10
+
+CI fix only — bumps runner from `macos-14` to `macos-15` so the
+xcodegen-generated project (`objectVersion = 77`) can be read by
+CI's Xcode. No source changes.
+
+## [0.1.6-rc8] — 2026-05-10
+
+CI fix only — re-tags rc7 with the missing `brew install xcodegen`
+step in `.github/workflows/release.yml`. Without it, the CI build
+fails before invoking `xcodebuild`. No source changes.
+
+## [0.1.6-rc7] — 2026-05-10
+
+Phase 4 of v0.2 — desktop widget. Adds a WidgetKit extension
+(small / medium / large) backed by a single JSON snapshot the host
+app writes into an App Group container. Restructures the build
+system to support the embedded `.appex`.
+
+### Added
+- `Sources/ClaudegrainCore/Widget/WidgetSnapshot.swift` —
+  `Codable` cross-process contract: hero metrics + 7-day spend
+  array + top-3 repos + cache hit. Schema versioned; readers
+  drop snapshots from a higher version (rollback-safe).
+- `WidgetSnapshotIO` — atomic writer/reader resolving the App
+  Group container `group.dev.claudegrain.shared`. Falls back to
+  Application Support for SwiftPM-only dev runs.
+- `Sources/ClaudegrainWidget/` — new `.appex` target.
+  - `ClaudegrainWidgetBundle` (@main) + `ClaudegrainSpendWidget`.
+  - `WidgetSnapshotProvider` (`TimelineProvider`) reads the host
+    file, returns `.after(15min)` policy, dims stale entries.
+  - `ClaudegrainEntryView` switching on `widgetFamily`. Three
+    layouts: hero %, hero + sparkline, hero + sparkline + top
+    repos + cache. EN/ZH inline localization (extension cannot
+    import host's `L`).
+- `AppCoordinator.writeWidgetSnapshotIfDue` — runs after every
+  `refreshDerivedNow()`, throttled to one disk write per 5 min,
+  followed by `WidgetCenter.shared.reloadAllTimelines()`.
+- `Claudegrain.xcodeproj` (committed, generated from
+  `project.yml` via `xcodegen`). Two targets: ClaudegrainApp
+  (host) + ClaudegrainWidget (.appex). Both link the SwiftPM
+  `ClaudegrainCore` library.
+- App Group entitlement on both targets.
+- ADR-0011 (widget packaging — Xcode project alongside SwiftPM)
+  + ADR-0012 (widget snapshot contract).
+
+### Changed
+- `scripts/build-dmg.sh` now builds via `xcodebuild` (regenerates
+  the project with `xcodegen` first). `--deep` codesign handles
+  the embedded `.appex`. New `DEVELOPMENT_TEAM` env required for
+  the App Group entitlement to validate at runtime.
+- `Package.swift` — `ClaudegrainApp` excludes `Info.plist` +
+  `Claudegrain.entitlements` and links `WidgetKit` so
+  `swift build` continues to work.
+
+### Verification
+- `swift build` clean
+- `swift test` 99/99 green (6 new `WidgetSnapshotTests`)
+- `xcodebuild Claudegrain` (Release): BUILD SUCCEEDED for both
+  targets
+
+## [0.1.6-rc6] — 2026-05-10
+
+Phase 5 of v0.2 (polish — partial). Settings UI cleanup + popover
+keyboard shortcuts + accessibility + OAuth-degraded surfacing.
+
+### Added
+- Real keyboard shortcuts on the popover footer: `F2` (Settings),
+  `F5` / `⌘R` (Refresh), `E` (Export), `P` (Pause/Resume),
+  `F10` (Quit). `⌘,` aliases Settings. Tooltips on every footer
+  button show the key hint.
+- `WeekChartPlaceholder` for the 7-day chart cold-start state —
+  replaces the previous synthesized ramp that misled users into
+  thinking they were looking at real data.
+- Cold-start empty state for `TopCostsList`
+  ("watching ~/.claude/projects…").
+- `OAuthDegradedBanner` surfaces ADR-0004's `oauthAuthError` /
+  `oauthDeprecated` states with a dismiss button — ends silent
+  fallback to JSONL estimates.
+- "as of HH:MM" stale-subtitle in the header strip whenever the
+  display has dropped off `oauthLive`.
+- Live 1 Hz clock in header (was previously frozen between events).
+- VoiceOver labels on `VitalRow` (`<label>: N percent` + reset
+  countdown) and `HeroSpend` (`$X.XX, today/all-time`). Decorative
+  dividers + ASCII bars are now `accessibilityHidden`.
+- `LiveDot` pulse and other looping animations now respect
+  `accessibilityReduceMotion`.
+- Animation tokens (`Animation.cgFast` / `cgMedium` / `cgSlow` /
+  `cgSpin` / `cgPulse`) in `Motion.swift`. Source of truth for all
+  view animation timings.
+- `KeyEquivalent.fnF2` / `.fnF5` / `.fnF10` helper extension.
+- Empty-state hint copy on `CommitmentsSheet` and `BudgetsTab`.
+
+### Changed
+- `BudgetsTab` row UX: configured rows now visually distinct from
+  default-inheriting rows (accent dot + filled vs. prompt-only
+  TextField). Drops misleading `0.00` weekly placeholder for `—`.
+  Bindings switched to `Optional<Double>` so prompts render the
+  global default. Add section reorganized; Add button disabled
+  until repo path is non-empty.
+- `QuietHoursTab` adopts `Section` grouping + `.formStyle(.grouped)`
+  for parity with `BudgetsTab`.
+- `PauseBanner`, `ForecastBadge`, `OAuthDegradedBanner` now
+  insert/remove with `.opacity` + `.move(edge: .top)` transitions
+  at `cgMedium`.
+- `HeroSpend` mode-switch (TOTAL ↔ TODAY) cross-fades sub-label +
+  `ModelStackBar` in lockstep with the numeric cost transition.
+- `StatusItemController.updateButton` memoizes the visible
+  `(metric, valueText, severity-bucket)` signature; menu bar redraw
+  count drops sharply on busy `AppModel` publish streams.
+
+### Docs
+- `docs/plans/v0.2-phase4-widget.md` — WidgetKit extension via
+  Xcode project restructure plan (14 TDD tasks, ADR draft).
+- `docs/plans/v0.2-phase5-polish.md` — full polish audit with
+  P0/P1/P2 priority matrix and 19 task breakdown.
+
+## [0.1.6-rc5] — 2026-05-05
+
+Phase 3 of v0.2 — control. Adds proactive notification + ingestion
+controls.
+
+### Added
+- Per-repo soft budgets (`BudgetStore`). Replaces the single
+  `repoOverspendThresholdUSD` value (auto-migrated). New `Budgets`
+  settings tab. (ADR-0008)
+- Quiet Hours window suppresses all notifications during a configurable
+  daily slice (cross-midnight supported). New `Quiet Hours` settings
+  tab. (ADR-0009)
+- Pause Ingest toggle — halts FSEvents + OAuth polling; resume runs
+  catch-up via existing cursor logic. Right-click menu item, `p`
+  footer button, popover banner.
+- Repo-overspend notifications now carry actionable buttons
+  (`Mark as paused` / `Ignore`). Responses are logged to
+  `CommitmentLog` (separate JSON file). New `Recent commitments` sheet.
+  (ADR-0010)
+- Localization: ~30 new EN/ZH strings.
+
+### Changed
+- `NotificationManager` consults `BudgetStore.resolve(repo:)` instead
+  of a single global threshold.
+- `NotificationManager.fire(...)` gated on `QuietHours.contains(now)`.
+
+### Docs
+- ADR-0008 budget-storage
+- ADR-0009 quiet-hours-suppress-only
+- ADR-0010 commitment-log
+
 ## [0.1.0] — 2026-05-05
 
 Initial public release.

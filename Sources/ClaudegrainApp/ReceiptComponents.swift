@@ -19,6 +19,9 @@ struct StencilTitleView: View {
             .multilineTextAlignment(.center)
             .lineSpacing(-1)
             .fixedSize(horizontal: true, vertical: false)
+            .accessibilityElement()
+            .accessibilityLabel("Claudegrain")
+            .accessibilityAddTraits(.isHeader)
     }
 }
 
@@ -47,6 +50,7 @@ extension View {
 struct LiveDot: View {
     @State private var animate = false
     @Environment(\.theme) private var theme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
         Circle()
@@ -55,8 +59,9 @@ struct LiveDot: View {
             .scaleEffect(animate ? 0.85 : 1)
             .opacity(animate ? 0.4 : 1)
             .neonGlow(color: theme.pulse, radius: 3, opacity: theme.glowEnabled ? 0.6 : 0)
-            .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: animate)
-            .onAppear { animate = true }
+            .animation(Motion.preferred(.cgPulse, reduceMotion: reduceMotion), value: animate)
+            .onAppear { if !reduceMotion { animate = true } }
+            .accessibilityHidden(true)
     }
 }
 
@@ -85,6 +90,7 @@ struct DoubleDivider: View {
             .font(.custom("JetBrains Mono", size: 11))
             .foregroundStyle(theme.ink.opacity(0.5))
             .padding(.vertical, 2)
+            .accessibilityHidden(true)
     }
 }
 
@@ -96,6 +102,7 @@ struct DashedDivider: View {
             .foregroundStyle(theme.ink.opacity(0.42))
             .tracking(0.5)
             .padding(.vertical, 2)
+            .accessibilityHidden(true)
     }
 }
 
@@ -107,6 +114,7 @@ struct StarsDivider: View {
             .foregroundStyle(theme.ink.opacity(0.32))
             .tracking(2)
             .padding(.vertical, 2)
+            .accessibilityHidden(true)
     }
 }
 
@@ -145,7 +153,8 @@ struct HeroSpend: View {
                 .neonGlow(color: theme.inkBold, radius: 8, opacity: theme.glowEnabled ? 0.55 : 0)
                 .neonGlow(color: theme.inkBold, radius: 18, opacity: theme.glowEnabled ? 0.28 : 0)
                 .contentTransition(.numericText())
-                .animation(.easeOut(duration: 0.2), value: current.costUSD)
+                .animation(.cgFast, value: current.costUSD)
+                .accessibilityLabel(heroA11yLabel)
 
             HStack(spacing: 6) {
                 if model.heroMode == .today, yesterdayCost > 0 {
@@ -168,10 +177,23 @@ struct HeroSpend: View {
                 }
             }
             .padding(.top, 2)
+            .id(model.heroMode)
+            .transition(.opacity)
 
             ModelStackBar(byModel: current.byModel)
                 .padding(.top, 4)
+                .id(model.heroMode)
+                .transition(.opacity)
+                .accessibilityHidden(true)
         }
+        .animation(.cgFast, value: model.heroMode)
+    }
+
+    /// "$X.XX, today" / "$X.XX, all-time" — VoiceOver friendly.
+    private var heroA11yLabel: String {
+        let dollars = String(format: "$%.2f", current.costUSD)
+        let scope = model.heroMode == .today ? model.t(.heroTabToday) : model.t(.heroTabTotal)
+        return "\(dollars), \(scope)"
     }
 
     private var subLabel: String {
@@ -252,10 +274,15 @@ struct ModelStackBar: View {
 
 struct VitalRow: View {
     let label: String
-    let percent: Double
+    /// `nil` ⇒ unknown (cold start, OAuth not yet polled). Renders `—%`
+    /// without a bar, communicating "checking" rather than 0%.
+    let percent: Double?
     let resetText: String
     let isWarn: Bool
     @Environment(\.theme) private var theme
+
+    private var displayPct: Double { percent ?? 0 }
+    private var isUnknown: Bool { percent == nil }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -269,14 +296,20 @@ struct VitalRow: View {
                         .foregroundStyle(theme.ink.opacity(0.7))
                 }
                 .frame(width: 88, alignment: .leading)
-                Text(asciiBar)
-                    .font(.cgMono)
-                    .foregroundStyle(barColor)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                Text("\(Int((percent * 100).rounded()))%")
+                if isUnknown {
+                    Text("")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                } else {
+                    Text(asciiBar)
+                        .font(.cgMono)
+                        .foregroundStyle(barColor)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .accessibilityHidden(true)
+                }
+                Text(isUnknown ? "—%" : "\(Int((displayPct * 100).rounded()))%")
                     .font(.custom("JetBrains Mono", size: 12).weight(.bold))
-                    .foregroundStyle(barColor)
-                    .neonGlow(color: barColor, radius: 2, opacity: theme.glowEnabled ? 0.4 : 0)
+                    .foregroundStyle(isUnknown ? theme.ink.opacity(0.5) : barColor)
+                    .neonGlow(color: barColor, radius: 2, opacity: theme.glowEnabled && !isUnknown ? 0.4 : 0)
                     .frame(width: 38, alignment: .trailing)
             }
             Text(resetText)
@@ -284,13 +317,18 @@ struct VitalRow: View {
                 .foregroundStyle(theme.ink.opacity(0.5))
                 .frame(maxWidth: .infinity, alignment: .trailing)
         }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(isUnknown
+            ? "\(label): unknown"
+            : "\(label): \(Int((displayPct * 100).rounded())) percent")
+        .accessibilityValue(resetText)
     }
 
     private var barColor: Color { isWarn ? theme.warn : theme.inkBold }
 
     private var asciiBar: String {
         let total = 19
-        let filled = Int((percent * Double(total)).rounded())
+        let filled = Int((displayPct * Double(total)).rounded())
         return String(repeating: "█", count: filled) + String(repeating: "░", count: total - filled)
     }
 }

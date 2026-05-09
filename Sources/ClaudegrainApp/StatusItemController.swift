@@ -21,6 +21,16 @@ final class StatusItemController: ObservableObject {
     private var observers: [NSKeyValueObservation] = []
     private var modelCancellable: AnyObject?
 
+    /// Memoized signature of the last applied button state. AppModel publishes
+    /// many fields the menu bar doesn't render (forecast, modelMix, weekDelta,
+    /// refresh flag, …); without a guard, every publish forces a redraw.
+    private var lastButtonSig: String?
+
+    /// Local NSEvent monitor active while the popover is shown. Captures ESC
+    /// and closes the popover. NSPopover.behavior = .transient handles
+    /// click-outside; ESC was the gap.
+    private var escMonitor: Any?
+
     func attach(model: AppModel) {
         self.model = model
         statusItem.length = NSStatusItem.variableLength
@@ -85,11 +95,20 @@ final class StatusItemController: ObservableObject {
             valueText = "\(Int((model.cacheHitRate * 100).rounded()))%"
         }
         let frac = model.sessionBlock?.usedFraction ?? 0
-        let symbolName: String
+        let bucket = frac >= 0.9 ? 2 : (frac >= 0.7 ? 1 : 0)
+
+        // Drop redraw when nothing the user can see changed.
+        let sig = "\(metric.rawValue)|\(valueText)|\(bucket)"
+        if sig == lastButtonSig { return }
+        lastButtonSig = sig
+
+        let symbolName = "circle.fill"
         let tint: NSColor
-        if frac >= 0.9 { symbolName = "circle.fill"; tint = .systemRed }
-        else if frac >= 0.7 { symbolName = "circle.fill"; tint = .systemYellow }
-        else { symbolName = "circle.fill"; tint = .systemGreen }
+        switch bucket {
+        case 2: tint = .systemRed
+        case 1: tint = .systemYellow
+        default: tint = .systemGreen
+        }
 
         let config = NSImage.SymbolConfiguration(pointSize: 8, weight: .bold)
         let dotImage = NSImage(systemSymbolName: symbolName, accessibilityDescription: nil)?
@@ -124,11 +143,36 @@ final class StatusItemController: ObservableObject {
     private func togglePopover(_ sender: AnyObject?) {
         guard let button = statusItem.button else { return }
         if popover.isShown {
-            popover.performClose(sender)
+            closePopover(sender)
         } else {
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
+            installEscMonitor()
         }
+    }
+
+    private func closePopover(_ sender: AnyObject?) {
+        popover.performClose(sender)
+        removeEscMonitor()
+    }
+
+    private func installEscMonitor() {
+        removeEscMonitor()
+        // keyCode 53 = Escape. Returning nil swallows the event so it doesn't
+        // beep; `self` retains the monitor while popover is shown.
+        escMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self else { return event }
+            if event.keyCode == 53, self.popover.isShown {
+                self.closePopover(nil)
+                return nil
+            }
+            return event
+        }
+    }
+
+    private func removeEscMonitor() {
+        if let m = escMonitor { NSEvent.removeMonitor(m) }
+        escMonitor = nil
     }
 
     private func showContextMenu(from button: NSStatusBarButton) {
@@ -142,6 +186,16 @@ final class StatusItemController: ObservableObject {
         )
         exportItem.target = self
         menu.addItem(exportItem)
+
+        let isPaused = AppDelegate.shared?.coordinator?.pauseController.isPaused ?? false
+        let pauseTitle = isPaused ? model.t(.menuResumeIngest) : model.t(.menuPauseIngest)
+        let pauseItem = NSMenuItem(
+            title: pauseTitle,
+            action: #selector(handlePauseMenu),
+            keyEquivalent: ""
+        )
+        pauseItem.target = self
+        menu.addItem(pauseItem)
 
         menu.addItem(.separator())
 
@@ -163,6 +217,10 @@ final class StatusItemController: ObservableObject {
 
     @objc private func handleExportMenu() {
         AppDelegate.shared?.coordinator?.openExportSheet()
+    }
+
+    @objc private func handlePauseMenu() {
+        AppDelegate.shared?.coordinator?.pauseController.toggle()
     }
 
     @objc private func handleQuitMenu() {

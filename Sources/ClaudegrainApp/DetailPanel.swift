@@ -92,6 +92,16 @@ private struct ReceiptBody: View {
 
             HeaderStrip()
 
+            if model.pauseController.isPaused {
+                PauseBanner()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
+            if model.oauthDegraded {
+                OAuthDegradedBanner()
+                    .transition(.opacity.combined(with: .move(edge: .top)))
+            }
+
             DoubleDivider()
 
             HeroSpend(yesterdayCost: 7.5)
@@ -100,6 +110,7 @@ private struct ReceiptBody: View {
             if model.forecastBlock?.basis != .insufficient {
                 ForecastBadge(forecast: model.forecastBlock, labelKey: .forecastBlockHits)
                     .padding(.top, 2)
+                    .transition(.opacity)
             }
 
             DashedDivider()
@@ -114,13 +125,13 @@ private struct ReceiptBody: View {
             VStack(spacing: 2) {
                 VitalRow(
                     label: model.t(.vitalSession),
-                    percent: model.sessionBlock?.usedFraction ?? 0,
+                    percent: model.sessionBlock?.usedFraction,
                     resetText: model.sessionBlock?.resetCountdown ?? "—",
                     isWarn: (model.sessionBlock?.usedFraction ?? 0) >= 0.7
                 )
                 VitalRow(
                     label: model.t(.vitalWeekly),
-                    percent: model.weekly?.usedFraction ?? 0,
+                    percent: model.weekly?.usedFraction,
                     resetText: model.weekly?.resetLabel ?? "—",
                     isWarn: (model.weekly?.usedFraction ?? 0) >= 0.85
                 )
@@ -135,7 +146,11 @@ private struct ReceiptBody: View {
             DashedDivider()
 
             SectionHeader(label: model.t(.sectionSpend7d))
-            WeekLineChart(points: weekPoints, todayValue: model.todayTotals.costUSD)
+            if weekPoints.isEmpty {
+                WeekChartPlaceholder()
+            } else {
+                WeekLineChart(points: weekPoints, todayValue: model.todayTotals.costUSD)
+            }
             WeekDayLabels()
 
             StarsDivider()
@@ -163,15 +178,16 @@ private struct ReceiptBody: View {
 
             FooterBlock()
         }
+        .animation(.cgMedium, value: model.pauseController.isPaused)
+        .animation(.cgMedium, value: model.forecastBlock?.basis)
+        .animation(.cgMedium, value: model.oauthDegraded)
     }
 
+    /// Real 7d spend series. Empty when ingest hasn't populated yet — caller
+    /// renders a "collecting baseline" placeholder instead of fabricating a
+    /// ramp (which previously misled users into thinking the chart was real).
     private var weekPoints: [Double] {
-        guard model.weekSpend.count == 7 else {
-            // Cold-start fallback before first ingest snapshot lands.
-            let today = max(model.todayTotals.costUSD, 0.5)
-            return [today * 0.5, today * 0.7, today * 0.4, today * 0.85, today * 0.75, today * 0.6, today]
-        }
-        return model.weekSpend
+        model.weekSpend.count == 7 ? model.weekSpend : []
     }
 
     private var cacheBaselineLabel: String {
@@ -195,16 +211,29 @@ private struct HeaderStrip: View {
             Text("·")
                 .font(.cgMonoSmall)
                 .foregroundStyle(theme.inkBold.opacity(0.6))
+                .accessibilityHidden(true)
             Text(statusLabel)
                 .font(.cgMonoSmall)
                 .tracking(1.8)
                 .foregroundStyle(theme.inkBold.opacity(0.7))
+            if let asOf = staleAsOfLabel {
+                Text(asOf)
+                    .font(.cgMonoXSmall)
+                    .tracking(1)
+                    .foregroundStyle(theme.inkBold.opacity(0.55))
+            }
             Spacer()
-            Text(timeString)
-                .font(.cgMonoSmall)
-                .tracking(1)
-                .foregroundStyle(theme.inkBold.opacity(0.7))
+            // 1 Hz live clock. TimelineView pauses automatically when the
+            // popover (and therefore this view) is offscreen.
+            TimelineView(.periodic(from: .now, by: 1.0)) { ctx in
+                Text(timeFormatter.string(from: ctx.date))
+                    .font(.cgMonoSmall)
+                    .tracking(1)
+                    .foregroundStyle(theme.inkBold.opacity(0.7))
+                    .accessibilityLabel(timeA11yFormatter.string(from: ctx.date))
+            }
         }
+        .accessibilityElement(children: .combine)
     }
 
     private var statusLabel: String {
@@ -217,10 +246,27 @@ private struct HeaderStrip: View {
         }
     }
 
-    private var timeString: String {
+    private var timeFormatter: DateFormatter {
         let f = DateFormatter()
         f.dateFormat = "HH:mm:ss"
-        return f.string(from: Date())
+        return f
+    }
+
+    /// "as of HH:MM" suffix shown only when the displayed snapshot was
+    /// produced by OAuth but we're no longer live (backoff, jsonl-only, etc.).
+    /// Hidden when status is .oauthLive or lastOAuthSyncAt is nil (cold start).
+    private var staleAsOfLabel: String? {
+        guard model.dataSourceStatus != .oauthLive,
+              let last = model.lastOAuthSyncAt else { return nil }
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return String(format: model.t(.statusAsOf), f.string(from: last))
+    }
+
+    private var timeA11yFormatter: DateFormatter {
+        let f = DateFormatter()
+        f.timeStyle = .short
+        return f
     }
 }
 
@@ -230,15 +276,24 @@ private struct TopCostsList: View {
 
     var body: some View {
         VStack(spacing: 2) {
-            ForEach(Array(model.topRepos.prefix(5).enumerated()), id: \.offset) { idx, repo in
-                CostRow(
-                    rank: idx + 1,
-                    type: "[R]",
-                    name: repo.repo,
-                    costUSD: repo.costUSD,
-                    deltaPct: deltaPct(for: repo),
-                    sparkPoints: sparkPoints(for: repo)
-                )
+            if model.topRepos.isEmpty {
+                Text(model.t(.topReposWatching))
+                    .font(.cgMonoSmall)
+                    .tracking(0.6)
+                    .foregroundStyle(theme.ink.opacity(0.55))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            } else {
+                ForEach(Array(model.topRepos.prefix(5).enumerated()), id: \.offset) { idx, repo in
+                    CostRow(
+                        rank: idx + 1,
+                        type: "[R]",
+                        name: repo.repo,
+                        costUSD: repo.costUSD,
+                        deltaPct: deltaPct(for: repo),
+                        sparkPoints: sparkPoints(for: repo)
+                    )
+                }
             }
         }
     }
@@ -437,12 +492,39 @@ private struct FooterBlock: View {
     var body: some View {
         VStack(spacing: 6) {
             HStack(spacing: 6) {
-                kbd("F2", model.t(.kbCfg)) { openSettingsWindow() }
+                kbd("F2", model.t(.kbCfg), shortcut: .fnF2) { openSettingsWindow() }
                 refreshButton
-                kbd("E", model.t(.kbExport)) { model.exportHandler?() }
-                kbd("F10", model.t(.kbQuit)) { NSApp.terminate(nil) }
+                kbd("E", model.t(.kbExport), shortcut: KeyEquivalent("e")) { model.exportHandler?() }
+                kbd("P", model.t(.kbPause), shortcut: KeyEquivalent("p")) { model.pauseHandler?() }
+                kbd("F10", model.t(.kbQuit), shortcut: .fnF10) { NSApp.terminate(nil) }
             }
             .padding(.top, 6)
+            // Hidden shortcut aliases — Cmd+, opens Settings (industry idiom),
+            // Cmd+R refreshes (parity with browsers/IDEs). Buttons are zero-size
+            // so they don't take layout but stay in the responder chain.
+            .background(
+                Group {
+                    Button("") { openSettingsWindow() }
+                        .keyboardShortcut(",", modifiers: .command)
+                    Button("") { triggerRefresh() }
+                        .keyboardShortcut("r", modifiers: .command)
+                }
+                .opacity(0)
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+            )
+
+            if !model.commitments.entries.isEmpty {
+                Button(action: { model.commitmentsHandler?() }) {
+                    Text(String(format: model.t(.commitmentsFooterLink),
+                                model.commitments.entries.count))
+                        .font(.cgMonoXSmall)
+                        .tracking(1.4)
+                        .foregroundStyle(theme.ink.opacity(0.7))
+                        .underline()
+                }
+                .buttonStyle(.plain)
+            }
 
             Text("───── \(String(format: model.t(.footerEndEvents), eventCount)) ─────")
                 .font(.cgMonoXSmall)
@@ -524,14 +606,14 @@ private struct FooterBlock: View {
             .neonGlow(color: theme.inkBold, radius: 3, opacity: theme.glowEnabled ? 0.18 : 0)
         }
         .buttonStyle(.plain)
+        .keyboardShortcut(.fnF5, modifiers: [])
+        .help("\(model.t(.kbRefresh)) (F5 / ⌘R)")
         .onChange(of: model.isRefreshing) { _, isRefreshing in
             if isRefreshing {
                 spinAngle = 0
-                withAnimation(.linear(duration: 0.7).repeatForever(autoreverses: false)) {
-                    spinAngle = 360
-                }
+                withAnimation(.cgSpin) { spinAngle = 360 }
             } else {
-                withAnimation(.easeOut(duration: 0.2)) { spinAngle = 0 }
+                withAnimation(.cgFast) { spinAngle = 0 }
             }
         }
     }
@@ -552,7 +634,13 @@ private struct FooterBlock: View {
         }
     }
 
-    private func kbd(_ key: String, _ desc: String, action: @escaping () -> Void) -> some View {
+    private func kbd(
+        _ key: String,
+        _ desc: String,
+        shortcut: KeyEquivalent? = nil,
+        modifiers: EventModifiers = [],
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             HStack(spacing: 4) {
                 Text(key)
@@ -578,6 +666,23 @@ private struct FooterBlock: View {
             .neonGlow(color: theme.inkBold, radius: 3, opacity: theme.glowEnabled ? 0.18 : 0)
         }
         .buttonStyle(.plain)
+        .help("\(desc) (\(key))")
+        .modifier(OptionalKeyboardShortcut(key: shortcut, modifiers: modifiers))
+    }
+}
+
+/// Applies a keyboardShortcut only when a key is supplied. Avoids the
+/// SwiftUI 4 limitation that you can't pass `KeyEquivalent?` directly.
+private struct OptionalKeyboardShortcut: ViewModifier {
+    let key: KeyEquivalent?
+    let modifiers: EventModifiers
+
+    func body(content: Content) -> some View {
+        if let key {
+            content.keyboardShortcut(key, modifiers: modifiers)
+        } else {
+            content
+        }
     }
 }
 
@@ -590,6 +695,10 @@ struct SettingsView: View {
         TabView {
             generalTab.tabItem { Label(model.t(.settingsGeneral), systemImage: "gear") }
             notificationsTab.tabItem { Label(model.t(.settingsNotifications), systemImage: "bell") }
+            BudgetsTab(budgets: model.budgets, recentRepos: model.topRepos.map { $0.id })
+                .tabItem { Label(model.t(.settingsBudgets), systemImage: "dollarsign.circle") }
+            QuietHoursTab()
+                .tabItem { Label(model.t(.settingsQuietHours), systemImage: "moon.zzz") }
             aboutTab.tabItem { Label(model.t(.settingsAbout), systemImage: "info.circle") }
         }
         .frame(width: 460, height: 380)
@@ -697,5 +806,80 @@ struct SettingsView: View {
         if panel.runModal() == .OK, let url = panel.url {
             model.preferences.notificationSoundChoice = .imported(path: url.path)
         }
+    }
+}
+
+/// Surfaces ADR-0004's OAuth-deprecated/auth-error states. Triggered when
+/// `model.oauthDegraded == true`. Persists until the user dismisses (local
+/// state) or OAuth recovers (coordinator clears the flag on next live tick).
+private struct OAuthDegradedBanner: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("⚠")
+                .font(.cgMonoSmall.weight(.bold))
+                .foregroundStyle(theme.warn)
+            Text(model.t(.oauthDegradedTitle))
+                .font(.cgMonoSmall)
+                .tracking(0.6)
+                .foregroundStyle(theme.inkBold)
+                .lineLimit(2)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer()
+            Button(model.t(.oauthDegradedDismiss)) {
+                model.oauthDegraded = false
+            }
+            .buttonStyle(.plain)
+            .font(.cgMonoSmall.weight(.bold))
+            .foregroundStyle(theme.paperBg)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(theme.inkBold)
+            .cornerRadius(2)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(theme.warn.opacity(0.12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(theme.warn.opacity(0.5), lineWidth: 0.5)
+        )
+        .padding(.horizontal, 4)
+        .accessibilityElement(children: .combine)
+    }
+}
+
+private struct PauseBanner: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("⏸ \(model.t(.pauseBannerTitle))")
+                .font(.cgMonoSmall.weight(.bold))
+                .tracking(1.4)
+                .foregroundStyle(theme.inkBold)
+            Spacer()
+            Button(model.t(.pauseBannerResume)) {
+                model.pauseHandler?()
+            }
+            .buttonStyle(.plain)
+            .font(.cgMonoSmall.weight(.bold))
+            .foregroundStyle(theme.paperBg)
+            .padding(.horizontal, 6)
+            .padding(.vertical, 2)
+            .background(theme.inkBold)
+            .cornerRadius(2)
+        }
+        .padding(.horizontal, 8)
+        .padding(.vertical, 5)
+        .background(theme.inkBold.opacity(0.08))
+        .overlay(
+            RoundedRectangle(cornerRadius: 3)
+                .stroke(theme.inkBold.opacity(0.4), lineWidth: 0.5)
+        )
+        .padding(.horizontal, 4)
     }
 }

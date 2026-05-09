@@ -16,7 +16,9 @@ permissions:
 
 jobs:
   build:
-    runs-on: macos-14
+    # macos-15 ships Xcode 16+ which can read xcodegen's default
+    # objectVersion = 77. macos-14's Xcode 15.4 cannot.
+    runs-on: macos-15
     timeout-minutes: 30
     env:
       DEVELOPER_DIR: /Applications/Xcode.app/Contents/Developer
@@ -30,10 +32,18 @@ jobs:
           xcodebuild -version
           swift --version
 
-      - name: Install create-dmg
-        run: brew install create-dmg
+      - name: Install build deps
+        # xcodegen regenerates Claudegrain.xcodeproj from project.yml at every
+        # build, keeping CI honest about what's committed. create-dmg gives
+        # us the polished DMG layout; hdiutil is a fallback.
+        run: brew install create-dmg xcodegen
 
       - name: Build DMG (ad-hoc signed)
+        # build-dmg.sh now drives xcodebuild so the embedded
+        # ClaudegrainWidget.appex ships inside .app. DEVELOPMENT_TEAM is
+        # intentionally unset on the ad-hoc CI path — the App Group
+        # entitlement won't validate at runtime, but the menu-bar app
+        # itself works fine.
         run: ./scripts/build-dmg.sh
 
       - name: Compute artifact path

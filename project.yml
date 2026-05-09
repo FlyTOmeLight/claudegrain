@@ -1,0 +1,88 @@
+name: Claudegrain
+options:
+  bundleIdPrefix: dev.claudegrain.menubar
+  deploymentTarget:
+    macOS: "14.0"
+  developmentLanguage: en
+  defaultConfig: Release
+  groupSortPosition: top
+  generateEmptyDirectories: true
+  xcodeVersion: "15.0"
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    MACOSX_DEPLOYMENT_TARGET: "14.0"
+    DEAD_CODE_STRIPPING: YES
+    ENABLE_HARDENED_RUNTIME: YES
+    DEVELOPMENT_TEAM: ""
+    CODE_SIGN_STYLE: Automatic
+    MARKETING_VERSION: "0.1.6"
+    CURRENT_PROJECT_VERSION: "1"
+
+packages:
+  ClaudegrainCore:
+    path: "."
+
+targets:
+  ClaudegrainApp:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/ClaudegrainApp
+        excludes:
+          - "Info.plist"
+          - "Claudegrain.entitlements"
+    resources:
+      - path: Sources/ClaudegrainApp/Resources
+    settings:
+      base:
+        PRODUCT_NAME: claudegrain
+        PRODUCT_BUNDLE_IDENTIFIER: dev.claudegrain.menubar
+        CODE_SIGN_ENTITLEMENTS: Sources/ClaudegrainApp/Claudegrain.entitlements
+        INFOPLIST_FILE: Sources/ClaudegrainApp/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../Frameworks"
+    dependencies:
+      - package: ClaudegrainCore
+        product: ClaudegrainCore
+      - target: ClaudegrainWidget
+        embed: true
+        codeSign: true
+
+  ClaudegrainWidget:
+    type: app-extension
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Sources/ClaudegrainWidget
+        excludes:
+          - "Info.plist"
+          - "ClaudegrainWidget.entitlements"
+    settings:
+      base:
+        PRODUCT_NAME: ClaudegrainWidget
+        PRODUCT_BUNDLE_IDENTIFIER: dev.claudegrain.menubar.widget
+        CODE_SIGN_ENTITLEMENTS: Sources/ClaudegrainWidget/ClaudegrainWidget.entitlements
+        INFOPLIST_FILE: Sources/ClaudegrainWidget/Info.plist
+        GENERATE_INFOPLIST_FILE: NO
+        SKIP_INSTALL: YES
+        LD_RUNPATH_SEARCH_PATHS: "$(inherited) @executable_path/../../../../Frameworks @executable_path/../../../Frameworks"
+    dependencies:
+      - package: ClaudegrainCore
+        product: ClaudegrainCore
+      - sdk: WidgetKit.framework
+      - sdk: SwiftUI.framework
+
+schemes:
+  Claudegrain:
+    build:
+      targets:
+        ClaudegrainApp: all
+        ClaudegrainWidget: all
+    run:
+      config: Debug
+      executable: ClaudegrainApp
+    archive:
+      config: Release

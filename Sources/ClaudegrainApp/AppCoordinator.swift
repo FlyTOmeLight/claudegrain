@@ -1,6 +1,9 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
+import UserNotifications
+import WidgetKit
 import ClaudegrainCore
 
 /// Wires `IngestActor` (jsonl pipeline) and `DataSourceCoordinator` (OAuth poll)
@@ -18,7 +21,19 @@ final class AppCoordinator {
 
     /// Exposed so menu / popover entry points can present the export sheet.
     let exporter: EventsExporter
+    let budgets: BudgetStore
+    let pauseController: IngestPauseController
+    let commitments: CommitmentLog
+    private var pauseSubscription: AnyCancellable?
+    private var notificationDelegate: NotificationActionRelay?
     private var exportWindow: NSWindow?
+    private var commitmentsWindow: NSWindow?
+
+    /// 5-minute throttle on widget-snapshot writes. WidgetKit budgets
+    /// ~40 timeline reloads/day; bursting on every JSONL ingest event
+    /// would burn that budget. See plan §4.
+    private var lastWidgetWriteAt: Date?
+    private static let widgetWriteInterval: TimeInterval = 5 * 60
 
     init(
         model: AppModel,
@@ -33,8 +48,19 @@ final class AppCoordinator {
         }
         self.ingest = IngestActor(db: db)
         self.dataSource = DataSourceCoordinator()
-        self.notifications = notifications ?? NotificationManager(prefs: model.preferences)
+
+        // Reuse the BudgetStore owned by AppModel so the Settings UI and
+        // the NotificationManager observe the same instance.
+        let store = model.budgets
+        store.migrateLegacyKeyIfNeeded()
+        self.budgets = store
+
+        self.notifications = notifications ?? NotificationManager(prefs: model.preferences, budgets: store)
         self.exporter = EventsExporter(db: self.db)
+        // Reuse the AppModel-owned pauseController so popover banner + menu
+        // observe the same instance the coordinator drives.
+        self.pauseController = model.pauseController
+        self.commitments = model.commitments
     }
 
     /// Opens the export sheet as a standalone window. LSUIElement = true ⇒ activate
@@ -64,7 +90,38 @@ final class AppCoordinator {
         window.makeKeyAndOrderFront(nil)
     }
 
+    /// Opens the recent commitments sheet as a standalone window.
+    func openCommitmentsSheet() {
+        if let win = commitmentsWindow {
+            NSApp.activate(ignoringOtherApps: true)
+            win.makeKeyAndOrderFront(nil)
+            return
+        }
+        let view = CommitmentsSheet(log: commitments)
+            .environmentObject(model)
+
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 460, height: 360),
+            styleMask: [.titled, .closable],
+            backing: .buffered,
+            defer: false
+        )
+        window.title = model.t(.commitmentsTitle)
+        window.contentView = NSHostingView(rootView: view)
+        window.center()
+        window.isReleasedWhenClosed = false
+        commitmentsWindow = window
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKeyAndOrderFront(nil)
+    }
+
     func start() async {
+        // Wire UN action callbacks → CommitmentLog. Retain the relay so it's
+        // not deallocated; UNUserNotificationCenter only weak-holds delegates.
+        let relay = NotificationActionRelay(commitments: commitments)
+        UNUserNotificationCenter.current().delegate = relay
+        self.notificationDelegate = relay
+
         // Apply the last-good LiteLLM price catalog (if any) before we cost
         // any events, then kick off a daily background refresh.
         await PriceTableLoader.shared.applyDiskCache()
@@ -91,9 +148,26 @@ final class AppCoordinator {
             }
         }
 
+        // Honor pause state changes — halt or resume both ingest and OAuth.
+        pauseSubscription = pauseController.$isPaused
+            .removeDuplicates()
+            .sink { [weak self] paused in
+                Task { [weak self] in
+                    if paused {
+                        await self?.ingest.stop()
+                        await self?.dataSource.stop()
+                    } else {
+                        await self?.ingest.refreshNow()
+                        await self?.dataSource.refreshNow()
+                        await self?.ingest.startWatching()
+                    }
+                }
+            }
+
         // Kick an immediate OAuth + ingest poll so the popover shows real
         // sessionBlock/weekly values without the user having to F5 once at boot.
-        Task { [ingest, dataSource] in
+        Task { [ingest, dataSource, pauseController] in
+            guard !pauseController.isPaused else { return }
             await ingest.refreshNow()
             await dataSource.refreshNow()
         }
@@ -159,15 +233,98 @@ final class AppCoordinator {
             model.forecastWeekly = await forecaster.forecastWeekly(weekly: weekly, recent: buckets)
         }
         notifications.evaluateBurnRate(session: model.sessionBlock, forecast: model.forecastBlock)
+
+        await writeWidgetSnapshotIfDue()
+    }
+
+    /// Builds a `WidgetSnapshot` from the current `AppModel` state and writes
+    /// it to the App Group container (or Application Support fallback in
+    /// dev). Throttled to once per `widgetWriteInterval` to stay inside
+    /// WidgetKit's reload budget.
+    private func writeWidgetSnapshotIfDue() async {
+        let now = Date()
+        if let last = lastWidgetWriteAt,
+           now.timeIntervalSince(last) < Self.widgetWriteInterval {
+            return
+        }
+
+        let snapshot = WidgetSnapshot(
+            generatedAt: now,
+            language: model.preferences.language.rawValue,
+            primaryMetric: model.primaryMetric.rawValue,
+            dataSourceStatus: dataSourceStatusString(model.dataSourceStatus),
+            sessionBlockPercent: model.sessionBlock?.usedFraction,
+            sessionBlockResetAt: model.sessionBlock?.resetsAt,
+            weeklyPercent: model.weekly?.usedFraction,
+            todayCostUSD: model.todayTotals.costUSD,
+            todayTokens: model.todayTotals.totalTokens,
+            weekSpend: model.weekSpend,
+            topRepos: model.topRepos.prefix(3).map { repo in
+                let pct = model.todayTotals.costUSD > 0
+                    ? min(1, repo.costUSD / model.todayTotals.costUSD)
+                    : 0
+                return WidgetSnapshot.Repo(name: repo.repo, costUSD: repo.costUSD, percentOfDay: pct)
+            },
+            cacheHitRate: model.cacheHitRate
+        )
+
+        let io = Self.resolveWidgetIO()
+        do {
+            try io.write(snapshot)
+            lastWidgetWriteAt = now
+            // Tell WidgetKit there's a new snapshot. Throttle is upstream of
+            // this call (5-min gate above) so we never burn the OS budget.
+            WidgetCenter.shared.reloadAllTimelines()
+        } catch {
+            // Snapshot writes are best-effort. Failure here just delays the
+            // widget update; the next scheduled refresh tries again.
+            NSLog("widget snapshot write failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// Resolves the App Group container; falls back to Application Support
+    /// when the host isn't entitled (P4-T05 will land entitlements). The
+    /// widget extension can only read the App Group path, so this fallback
+    /// is dev-only — it lets us validate snapshot generation in SwiftPM
+    /// builds before the Xcode project + entitlements ship.
+    private static func resolveWidgetIO() -> WidgetSnapshotIO {
+        if let io = WidgetSnapshotIO.appGroupContainer() { return io }
+        let fm = FileManager.default
+        let support = (try? fm.url(
+            for: .applicationSupportDirectory,
+            in: .userDomainMask,
+            appropriateFor: nil,
+            create: true
+        ).appendingPathComponent("claudegrain")) ?? fm.temporaryDirectory
+        return WidgetSnapshotIO(directory: support)
+    }
+
+    private func dataSourceStatusString(_ status: DataSourceStatus) -> String {
+        switch status {
+        case .oauthLive:    return "oauthLive"
+        case .jsonlOnly:    return "jsonlOnly"
+        case .cliFallback:  return "cliFallback"
+        case .offline:      return "offline"
+        case .unknown:      return "unknown"
+        }
     }
 
     private func applyDataSourceSnapshot(_ snapshot: DataSourceCoordinator.Snapshot) {
         if let session = snapshot.session { model.sessionBlock = session }
         if let weekly = snapshot.weekly { model.weekly = weekly }
         switch snapshot.state {
-        case .oauthLive: model.dataSourceStatus = .oauthLive
-        case .jsonlOnly, .oauthAuthError, .oauthDeprecated:
+        case .oauthLive:
+            model.dataSourceStatus = .oauthLive
+            model.lastOAuthSyncAt = Date()
+            model.oauthDegraded = false
+        case .jsonlOnly:
             model.dataSourceStatus = .jsonlOnly
+            model.oauthDegraded = false
+        case .oauthAuthError, .oauthDeprecated:
+            // ADR-0004: real-time path collapsed permanently or until reauth.
+            // UI surfaces a banner so the user knows quotas are estimates.
+            model.dataSourceStatus = .jsonlOnly
+            model.oauthDegraded = true
         case .oauthBackoff:
             // Keep the prior status; the snapshot UI shows "stale" until next tick succeeds.
             break

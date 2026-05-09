@@ -93,11 +93,55 @@ enum L: String, Hashable {
 
     // v0.2 — kbd
     case kbExport                 // "export"
+    case kbPause
+
+    // v0.2 — pause UI
+    case menuPauseIngest
+    case menuResumeIngest
+    case pauseBannerTitle
+    case pauseBannerLastUpdate
+    case pauseBannerResume
+
+    // v0.2 — commitments sheet
+    case commitmentsTitle
+    case commitmentsEmpty
+    case commitmentsClose
+    case commitmentsStatusOpen
+    case commitmentsStatusPaused
+    case commitmentsStatusIgnored
+    case commitmentsFooterLink
+
+    // v0.2 — empty states
+    case chartCollectingBaseline
+    case topReposWatching
+    case oauthDegradedTitle
+    case oauthDegradedDismiss
+    case statusAsOf
+    case commitmentsEmptyHint
+    case budgetsEmptyHint
 
     // Settings — tabs
     case settingsGeneral
     case settingsNotifications
     case settingsAbout
+    case settingsBudgets
+    case settingsQuietHours
+
+    // Settings — quiet hours
+    case quietHoursEnable
+    case quietHoursFrom
+    case quietHoursTo
+    case quietHoursDeviceLocal
+    case quietHoursDescription
+
+    // Settings — budgets
+    case budgetsGlobalSection
+    case budgetsGlobalDaily
+    case budgetsRepoSection
+    case budgetsAddSection
+    case budgetsAddRepoPlaceholder
+    case budgetsAddButton
+    case budgetsEmpty
 
     // Settings — general
     case sgMenuBarShows
@@ -215,10 +259,46 @@ enum L10n {
         .exportCancel:             "Cancel",
         .exportDone:               "Saved to %@",
         .kbExport:                 "export",
+        .kbPause:                   "pause",
+        .menuPauseIngest:           "Pause Ingest",
+        .menuResumeIngest:          "Resume Ingest",
+        .pauseBannerTitle:          "Paused",
+        .pauseBannerLastUpdate:     "last updated %@",
+        .pauseBannerResume:         "Resume",
+
+        .commitmentsTitle:          "Recent commitments",
+        .commitmentsEmpty:          "No commitments recorded yet.",
+        .commitmentsClose:          "Close",
+        .commitmentsStatusOpen:     "open",
+        .commitmentsStatusPaused:   "paused",
+        .commitmentsStatusIgnored:  "ignored",
+        .commitmentsFooterLink:     "Recent commitments [%d]",
+
+        .chartCollectingBaseline:   "Collecting 7-day baseline…",
+        .topReposWatching:          "watching ~/.claude/projects…",
+        .oauthDegradedTitle:        "Real-time quota disabled — showing JSONL estimate.",
+        .oauthDegradedDismiss:      "Dismiss",
+        .statusAsOf:                "as of %@",
+        .commitmentsEmptyHint:      "Commitments are recorded when you respond to a repo-overspend notification with “Mark paused” or “Ignore”.",
+        .budgetsEmptyHint:          "Set a daily $ ceiling for any repo below — overspend triggers a notification.",
 
         .settingsGeneral: "General",
         .settingsNotifications: "Notifications",
         .settingsAbout: "About",
+        .settingsBudgets:           "Budgets",
+        .settingsQuietHours:        "Quiet Hours",
+        .quietHoursEnable:          "Enable quiet hours",
+        .quietHoursFrom:            "From",
+        .quietHoursTo:              "To",
+        .quietHoursDeviceLocal:     "Time zone: device local",
+        .quietHoursDescription:     "Notifications during this window are suppressed. The menu bar icon and popover still update.",
+        .budgetsGlobalSection:      "Global default",
+        .budgetsGlobalDaily:        "Daily $",
+        .budgetsRepoSection:        "Per-repo overrides",
+        .budgetsAddSection:         "Add repo budget",
+        .budgetsAddRepoPlaceholder: "Repo path or alias",
+        .budgetsAddButton:          "Add",
+        .budgetsEmpty:              "No per-repo budgets yet.",
 
         .sgMenuBarShows: "Menu bar shows",
         .sgSessionPct: "Session %",
@@ -325,10 +405,46 @@ enum L10n {
         .exportCancel:             "取消",
         .exportDone:               "已保存到 %@",
         .kbExport:                 "导出",
+        .kbPause:                   "暂停",
+        .menuPauseIngest:           "暂停采集",
+        .menuResumeIngest:          "恢复采集",
+        .pauseBannerTitle:          "已暂停",
+        .pauseBannerLastUpdate:     "最后更新 %@",
+        .pauseBannerResume:         "恢复",
+
+        .commitmentsTitle:          "最近承诺",
+        .commitmentsEmpty:          "尚无承诺记录。",
+        .commitmentsClose:          "关闭",
+        .commitmentsStatusOpen:     "未处理",
+        .commitmentsStatusPaused:   "已暂停",
+        .commitmentsStatusIgnored:  "已忽略",
+        .commitmentsFooterLink:     "最近承诺 [%d]",
+
+        .chartCollectingBaseline:   "正在采集 7 天基线…",
+        .topReposWatching:          "监听 ~/.claude/projects…",
+        .oauthDegradedTitle:        "实时配额已停用 — 当前为 JSONL 估算值。",
+        .oauthDegradedDismiss:      "关闭",
+        .statusAsOf:                "(于 %@)",
+        .commitmentsEmptyHint:      "当通知触发后,选择「已暂停」或「忽略」会在此处留下记录。",
+        .budgetsEmptyHint:          "为任意仓库设置日预算 $ 上限,超额会触发通知。",
 
         .settingsGeneral: "通用",
         .settingsNotifications: "通知",
         .settingsAbout: "关于",
+        .settingsBudgets:           "预算",
+        .settingsQuietHours:        "免打扰",
+        .quietHoursEnable:          "启用免打扰时段",
+        .quietHoursFrom:            "从",
+        .quietHoursTo:              "到",
+        .quietHoursDeviceLocal:     "时区:本机本地",
+        .quietHoursDescription:     "时段内不投递通知。菜单栏图标和 popover 仍会更新。",
+        .budgetsGlobalSection:      "全局默认",
+        .budgetsGlobalDaily:        "日预算 $",
+        .budgetsRepoSection:        "按仓库覆盖",
+        .budgetsAddSection:         "添加仓库预算",
+        .budgetsAddRepoPlaceholder: "仓库路径或别名",
+        .budgetsAddButton:          "添加",
+        .budgetsEmpty:              "暂无单仓库预算。",
 
         .sgMenuBarShows: "菜单栏显示",
         .sgSessionPct: "会话 %",

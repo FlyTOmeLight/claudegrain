@@ -1,5 +1,6 @@
 import Foundation
 import Combine
+import ClaudegrainCore
 
 enum PrimaryMetric: String, CaseIterable, Codable {
     case sessionPercent
@@ -36,6 +37,7 @@ final class Preferences: ObservableObject {
         static let notificationSound = "notificationSound"
         static let language = "language"
         static let layoutMode = "layoutMode"
+        static let quietHours = "quietHours.v1"
     }
 
     static let shared = Preferences()
@@ -49,7 +51,9 @@ final class Preferences: ObservableObject {
             Key.notifyBurnRate: false,
             Key.notifyBlockReset: false,
             Key.notifyRepoOverspend: false,
-            Key.repoOverspendThresholdUSD: 10.0,
+            // repoOverspendThresholdUSD migrated to BudgetStore.globalDefaultDailyUSD;
+            // omit from registration domain so process-wide registration doesn't leak
+            // a default value into BudgetStoreTests' isolated suite migration check.
             Key.primaryMetric: PrimaryMetric.sessionPercent.rawValue,
             Key.language: AppLanguage.chinese.rawValue,
             Key.layoutMode: LayoutMode.scroll.rawValue,
@@ -148,6 +152,21 @@ final class Preferences: ObservableObject {
         set {
             if let data = try? JSONEncoder().encode(newValue) {
                 defaults.set(data, forKey: Key.notificationSound)
+            }
+            objectWillChange.send()
+        }
+    }
+
+    var quietHours: QuietHours {
+        get {
+            guard let data = defaults.data(forKey: Key.quietHours),
+                  let q = try? JSONDecoder().decode(QuietHours.self, from: data)
+            else { return .default }
+            return q
+        }
+        set {
+            if let data = try? JSONEncoder().encode(newValue) {
+                defaults.set(data, forKey: Key.quietHours)
             }
             objectWillChange.send()
         }
