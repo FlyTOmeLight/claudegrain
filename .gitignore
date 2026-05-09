@@ -3,6 +3,8 @@
 DerivedData/
 *.xcodeproj/xcuserdata/
 *.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcuserdata/
+*.xcodeproj/project.xcworkspace/xcshareddata/IDEWorkspaceChecks.plist
 .DS_Store
 build/
 release/
@@ -17,3 +19,4 @@ v*.png
 
 # local Claude Code project guide
 CLAUDE.md
+.claude/

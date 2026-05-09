@@ -3,6 +3,7 @@ import Combine
 import Foundation
 import SwiftUI
 import UserNotifications
+import WidgetKit
 import ClaudegrainCore
 
 /// Wires `IngestActor` (jsonl pipeline) and `DataSourceCoordinator` (OAuth poll)
@@ -271,6 +272,9 @@ final class AppCoordinator {
         do {
             try io.write(snapshot)
             lastWidgetWriteAt = now
+            // Tell WidgetKit there's a new snapshot. Throttle is upstream of
+            // this call (5-min gate above) so we never burn the OS budget.
+            WidgetCenter.shared.reloadAllTimelines()
         } catch {
             // Snapshot writes are best-effort. Failure here just delays the
             // widget update; the next scheduled refresh tries again.

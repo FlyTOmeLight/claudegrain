@@ -18,7 +18,9 @@ let package = Package(
             name: "ClaudegrainApp",
             dependencies: ["ClaudegrainCore"],
             path: "Sources/ClaudegrainApp",
-            resources: [.process("Resources")]
+            exclude: ["Info.plist", "Claudegrain.entitlements"],
+            resources: [.process("Resources")],
+            linkerSettings: [.linkedFramework("WidgetKit")]
         ),
         .executableTarget(
             name: "ClaudegrainSpike",
