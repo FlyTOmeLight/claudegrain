@@ -4,6 +4,12 @@ All notable changes to **claudegrain** are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and the project
 adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.1.6-rc8] — 2026-05-10
+
+CI fix only — re-tags rc7 with the missing `brew install xcodegen`
+step in `.github/workflows/release.yml`. Without it, the CI build
+fails before invoking `xcodebuild`. No source changes.
+
 ## [0.1.6-rc7] — 2026-05-10
 
 Phase 4 of v0.2 — desktop widget. Adds a WidgetKit extension
