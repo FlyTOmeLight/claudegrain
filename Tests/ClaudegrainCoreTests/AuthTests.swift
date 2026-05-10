@@ -60,4 +60,43 @@ final class AuthTests: XCTestCase {
         let parsed = try OAuthUsageClient.decode(data: json)
         XCTAssertEqual(parsed.sevenDaySonnet?.utilization, 20.0)
     }
+
+    // MARK: - Retry-After parser
+
+    func testParseRetryAfterDeltaSeconds() {
+        XCTAssertEqual(OAuthUsageClient.parseRetryAfter("120"), 120)
+        XCTAssertEqual(OAuthUsageClient.parseRetryAfter("  30  "), 30)
+        XCTAssertEqual(OAuthUsageClient.parseRetryAfter("0"), 0)
+    }
+
+    func testParseRetryAfterHttpDate() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        // IMF-fixdate, 90 seconds in the future from `now`.
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        let header = formatter.string(from: now.addingTimeInterval(90))
+
+        let result = OAuthUsageClient.parseRetryAfter(header, now: now)
+        XCTAssertNotNil(result)
+        XCTAssertEqual(result ?? -1, 90, accuracy: 1)
+    }
+
+    func testParseRetryAfterPastDateClampsToZero() {
+        let now = Date(timeIntervalSince1970: 1_700_000_000)
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.timeZone = TimeZone(secondsFromGMT: 0)
+        formatter.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        let header = formatter.string(from: now.addingTimeInterval(-3600))
+
+        XCTAssertEqual(OAuthUsageClient.parseRetryAfter(header, now: now), 0)
+    }
+
+    func testParseRetryAfterMalformedReturnsNil() {
+        XCTAssertNil(OAuthUsageClient.parseRetryAfter(nil))
+        XCTAssertNil(OAuthUsageClient.parseRetryAfter(""))
+        XCTAssertNil(OAuthUsageClient.parseRetryAfter("not-a-number-or-date"))
+    }
 }
