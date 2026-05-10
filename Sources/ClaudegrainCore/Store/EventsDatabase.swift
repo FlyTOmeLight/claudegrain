@@ -299,30 +299,65 @@ public actor EventsDatabase {
         }
     }
 
+    /// Top N tools by cost over `day`. ADR-0015 attribution: when `tools_json` is
+    /// present, each turn's cost/tokens are split across its tools by block-count
+    /// shares (deduped by name). Legacy rows (tools_json NULL) fall back to 100% on
+    /// `primary_tool`. Fan-out happens in Swift because SQLite can't fan json_each
+    /// into a covered aggregate in one pass; row count per window is small.
     public func topTools(on day: Date, limit: Int = 5, calendar: Calendar = .current) throws -> [ToolBreakdown] {
         let (start, end) = Self.dayBounds(day, calendar: calendar)
-        return try pool.read { db in
+        let rows: [Row] = try pool.read { db in
             try Row.fetchAll(
                 db,
                 sql: """
-                SELECT primary_tool, mcp_server,
-                       SUM(cost_usd) AS cost,
-                       SUM(in_tok + out_tok + cache_create_tok + cache_read_tok) AS toks
+                SELECT primary_tool, tools_json, cost_usd,
+                       (in_tok + out_tok + cache_create_tok + cache_read_tok) AS toks
                 FROM events
-                WHERE ts >= ? AND ts < ? AND primary_tool IS NOT NULL
-                GROUP BY primary_tool
-                ORDER BY cost DESC
-                LIMIT ?
+                WHERE ts >= ? AND ts < ?
+                  AND (primary_tool IS NOT NULL OR tools_json IS NOT NULL)
                 """,
-                arguments: [start, end, limit]
-            ).map { row in
-                ToolBreakdown(
-                    toolName: row["primary_tool"],
-                    mcpServer: row["mcp_server"],
-                    costUSD: row["cost"],
-                    totalTokens: Int(row["toks"] as Int64? ?? 0)
-                )
+                arguments: [start, end]
+            )
+        }
+
+        var costs: [String: Double] = [:]
+        var tokens: [String: Double] = [:]
+        let decoder = JSONDecoder()
+
+        for row in rows {
+            let cost: Double = row["cost_usd"] ?? 0
+            let toks: Double = Double(row["toks"] as Int64? ?? 0)
+            let primary: String? = row["primary_tool"]
+            let toolsJsonRaw: String? = row["tools_json"]
+
+            let shares: [String: Double]
+            if let toolsJsonRaw,
+               let data = toolsJsonRaw.data(using: .utf8),
+               let arr = try? decoder.decode([String].self, from: data),
+               !arr.isEmpty {
+                var counts: [String: Int] = [:]
+                for t in arr { counts[t, default: 0] += 1 }
+                let n = Double(arr.count)
+                shares = counts.mapValues { Double($0) / n }
+            } else if let primary {
+                shares = [primary: 1.0]
+            } else {
+                continue
             }
+
+            for (tool, share) in shares {
+                costs[tool, default: 0] += cost * share
+                tokens[tool, default: 0] += toks * share
+            }
+        }
+
+        return costs.sorted { $0.value > $1.value }.prefix(limit).map { entry in
+            ToolBreakdown(
+                toolName: entry.key,
+                mcpServer: entry.key.mcpComponents()?.server,
+                costUSD: entry.value,
+                totalTokens: Int((tokens[entry.key] ?? 0).rounded())
+            )
         }
     }
 
@@ -661,6 +696,17 @@ public actor EventsDatabase {
     }
 
     // MARK: - Test helpers (ADR-0015)
+
+    /// Test-only: NULL out tools_json on every row matching sourceFile to simulate a
+    /// pre-v4 (legacy) row that should fall back to primary_tool for attribution.
+    func _eraseToolsJsonForTesting(sourceFile: String) throws {
+        try pool.write { db in
+            try db.execute(
+                sql: "UPDATE events SET tools_json = NULL WHERE source_file = ?",
+                arguments: [sourceFile]
+            )
+        }
+    }
 
     /// Decoded tools array stored on the row matching (sourceFile, offset). nil when
     /// the column is NULL (legacy v1–v3 row) or no row matches. Internal — used by
