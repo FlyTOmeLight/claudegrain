@@ -4,9 +4,9 @@
 
 **English** · [中文](README.zh-CN.md)
 
-| Phosphor (dark) | Thermal paper (light) |
-| --- | --- |
-| ![dark](docs/screenshots/v18-dark.png) | ![light](docs/screenshots/v18-light.png) |
+<p align="center">
+  <img src="docs/screenshots/v18-demo.gif" alt="claudegrain demo — phosphor dark + thermal paper light" width="380">
+</p>
 
 ## What sets it apart
 

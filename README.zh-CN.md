@@ -4,9 +4,9 @@
 
 [English](README.md) · **中文**
 
-| Phosphor（深色） | Thermal paper（浅色） |
-| --- | --- |
-| ![dark](docs/screenshots/v18-dark.png) | ![light](docs/screenshots/v18-light.png) |
+<p align="center">
+  <img src="docs/screenshots/v18-demo.gif" alt="claudegrain 演示 — 磷光深色 + 热感打印纸浅色" width="380">
+</p>
 
 ## 与同类工具的差异
 
