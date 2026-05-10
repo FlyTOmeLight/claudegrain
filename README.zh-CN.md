@@ -34,7 +34,12 @@
 
 ## 安装
 
-从 [GitHub Releases](https://github.com/FlyTOmeLight/claudegrain/releases/latest) 下载最新 DMG。
+```bash
+brew tap FlyTOmeLight/claudegrain
+brew install --cask claudegrain
+```
+
+或者从 [GitHub Releases](https://github.com/FlyTOmeLight/claudegrain/releases/latest) 手动下载最新 DMG。
 
 > **首次打开 —— Gatekeeper 拦路**
 >
