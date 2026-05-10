@@ -88,3 +88,36 @@ jobs:
 
             When the project upgrades to a notarized release, this hoop will
             disappear.
+
+      - name: Bump Homebrew tap
+        # Skips silently when HOMEBREW_TAP_TOKEN isn't configured (e.g. for
+        # PRs from forks). Setup once: create a fine-grained PAT scoped to
+        # FlyTOmeLight/homebrew-claudegrain with contents:write, store as
+        # the HOMEBREW_TAP_TOKEN repo secret. All inputs to `run:` are from
+        # repo-controlled paths (VERSION file via earlier step, computed
+        # SHA, repo secret) — no github.event.* user-controlled strings.
+        if: startsWith(github.ref, 'refs/tags/v') && env.HOMEBREW_TAP_TOKEN != ''
+        env:
+          HOMEBREW_TAP_TOKEN: ${{ secrets.HOMEBREW_TAP_TOKEN }}
+          VERSION: ${{ steps.artifact.outputs.version }}
+          DMG: ${{ steps.artifact.outputs.dmg }}
+        run: |
+          set -euo pipefail
+          SHA="$(shasum -a 256 "$DMG" | awk '{print $1}')"
+          WORK="$(mktemp -d)"
+          git clone --depth 1 \
+            "https://x-access-token:${HOMEBREW_TAP_TOKEN}@github.com/FlyTOmeLight/homebrew-claudegrain.git" \
+            "$WORK/tap"
+          cd "$WORK/tap"
+          # macos-15 runner uses BSD sed — `-i ''` two-arg form, not GNU `-i`.
+          sed -i '' -E "s/version \"[^\"]*\"/version \"${VERSION}\"/" Casks/claudegrain.rb
+          sed -i '' -E "s/sha256 \"[^\"]*\"/sha256 \"${SHA}\"/" Casks/claudegrain.rb
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config user.name  "github-actions[bot]"
+          if git diff --quiet Casks/claudegrain.rb; then
+            echo "tap already at $VERSION — nothing to push"
+            exit 0
+          fi
+          git add Casks/claudegrain.rb
+          git commit -m "claudegrain ${VERSION}"
+          git push origin HEAD:main
