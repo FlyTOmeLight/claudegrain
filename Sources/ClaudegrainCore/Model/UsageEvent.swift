@@ -61,6 +61,18 @@ public struct UsageEvent: Equatable, Sendable {
     /// tool_use block. Returns nil for non-tool turns (final assistant text).
     public var primaryTool: String? { tools.first }
 
+    /// ADR-0015 v2 attribution. Block-count proportional with dedup by tool
+    /// name. Given `tools = [Read, Read, Bash]` ⇒ `[Read: 2/3, Bash: 1/3]`.
+    /// Nil for non-tool turns. Multipliable against `costUSD` / `totalTokens`
+    /// in aggregation: `share × turn_total`. See ADR-0015 §"Algorithm".
+    public var toolShares: [String: Double]? {
+        guard !tools.isEmpty else { return nil }
+        var counts: [String: Int] = [:]
+        for t in tools { counts[t, default: 0] += 1 }
+        let n = Double(tools.count)
+        return counts.mapValues { Double($0) / n }
+    }
+
     /// Family grouping derived from `model`. ADR-0006: grouped in Swift, not SQL.
     public var modelFamily: ModelFamily { ModelFamily.parse(model) }
 
