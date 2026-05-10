@@ -115,11 +115,8 @@ private struct ReceiptBody: View {
 
             DashedDivider()
 
-            // WeekDelta — fixed mode skips to fit HD screens (parity with SubtotalsBlock).
-            if model.layoutMode == .scroll {
-                WeekDeltaRow(delta: model.weekDelta)
-                DashedDivider()
-            }
+            WeekDeltaRow(delta: model.weekDelta)
+            DashedDivider()
 
             SectionHeader(label: model.t(.sectionUsageLimits))
             VStack(spacing: 2) {
@@ -158,37 +155,21 @@ private struct ReceiptBody: View {
             SectionHeader(label: model.t(.sectionTopCosts))
             TopCostsList()
 
-            // TopTools — fixed mode skips so the popover fits an HD screen.
-            // Without this gate, the natural fixed-mode height exceeds the
-            // visibleFrame on smaller MBPs; AppKit then horizontally translates
-            // the popover to keep it on-screen, which the user perceives as
-            // the popover anchor "drifting" away from the menu bar icon.
-            // (Parity with heatmap / ModelMix / Subtotals — see ADR-0015 follow-up.)
-            if model.layoutMode == .scroll {
-                DashedDivider()
-                SectionHeader(label: model.t(.sectionTopTools))
-                TopToolsList()
+            DashedDivider()
+            SectionHeader(label: model.t(.sectionTopTools))
+            TopToolsList()
 
-                DashedDivider()
-                SectionHeader(label: model.t(.sectionTimeOfDay))
-                HeatmapView(buckets: model.hourlyBuckets)
-            }
+            DashedDivider()
+            SectionHeader(label: model.t(.sectionTimeOfDay))
+            HeatmapView(buckets: model.hourlyBuckets)
 
-            // ModelMix — fixed mode skips to fit HD screens.
-            if model.layoutMode == .scroll {
-                DashedDivider()
-                ModelMixRow(mix: model.modelMix)
-            }
+            DashedDivider()
+            ModelMixRow(mix: model.modelMix)
 
             DoubleDivider()
 
-            // Fixed mode skips the dense subtotals/cache breakdown so the
-            // popover fits an HD screen without clipping. Scroll mode keeps
-            // the full receipt.
-            if model.layoutMode == .scroll {
-                SubtotalsBlock()
-                DoubleDivider()
-            }
+            SubtotalsBlock()
+            DoubleDivider()
 
             NetTotalRow()
 
