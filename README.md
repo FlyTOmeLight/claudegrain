@@ -34,7 +34,12 @@ See [docs/adr/0001-three-tier-data-source.md](docs/adr/0001-three-tier-data-sour
 
 ## Install
 
-Grab the latest DMG from [GitHub Releases](https://github.com/FlyTOmeLight/claudegrain/releases/latest).
+```bash
+brew tap FlyTOmeLight/claudegrain
+brew install --cask claudegrain
+```
+
+Or grab the latest DMG manually from [GitHub Releases](https://github.com/FlyTOmeLight/claudegrain/releases/latest).
 
 > **First launch — Gatekeeper hoop**
 >
