@@ -111,7 +111,7 @@ public actor DataSourceCoordinator {
     }
 
     private func handleHTTPError(status: Int, body: String) {
-        Self.logger.warning("OAuth HTTP \(status): \(body.prefix(200), privacy: .public)")
+        Self.logger.warning("OAuth HTTP \(status, privacy: .public): \(body.prefix(200), privacy: .public)")
         switch status {
         case 401, 403:
             transition(to: .oauthAuthError)
@@ -132,7 +132,8 @@ public actor DataSourceCoordinator {
     /// 22+ minute degradations in production).
     private func handleRateLimit(retryAfter: TimeInterval?, body: String) {
         let wait = retryAfter ?? 60
-        Self.logger.warning("OAuth 429 — backoff \(Int(wait))s (Retry-After \(retryAfter == nil ? "missing" : String(Int(retryAfter!))))")
+        let retryAfterDesc = retryAfter == nil ? "missing" : String(Int(retryAfter!))
+        Self.logger.warning("OAuth 429 — backoff \(Int(wait), privacy: .public)s (Retry-After \(retryAfterDesc, privacy: .public))")
         let until = Date().addingTimeInterval(wait)
         transition(to: .oauthBackoff(until: until))
     }

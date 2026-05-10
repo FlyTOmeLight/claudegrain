@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import os.log
 import ClaudegrainCore
 
 enum NotificationKind: String, Hashable {
@@ -29,6 +30,7 @@ final class NotificationManager {
     private var burnRateFiredFor: Date?
     private var repoOverspendFired: Set<RepoOverspendKey> = []
     private var authRequested = false
+    private static let logger = Logger(subsystem: "dev.claudegrain.menubar", category: "notify")
 
     init(
         prefs: Preferences? = nil,
@@ -170,7 +172,11 @@ final class NotificationManager {
     }
 
     private func fire(_ kind: NotificationKind, title: String, body: String) {
-        guard shouldDeliver(now: Date()) else { return }
+        guard shouldDeliver(now: Date()) else {
+            Self.logger.info("notification \(kind.rawValue, privacy: .public) suppressed by quiet hours")
+            return
+        }
+        Self.logger.notice("notification fire: \(kind.rawValue, privacy: .public) — \(title, privacy: .public)")
         handler(kind, title, body)
     }
 
@@ -182,7 +188,13 @@ final class NotificationManager {
         guard usesSystemCenter, !authRequested else { return }
         authRequested = true
         let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+            if let error {
+                Self.logger.error("notification auth request failed: \(String(describing: error), privacy: .public)")
+            } else {
+                Self.logger.notice("notification auth granted=\(granted, privacy: .public)")
+            }
+        }
 
         let mark = UNNotificationAction(
             identifier: Self.actionMarkPaused,
