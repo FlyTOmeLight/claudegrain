@@ -48,6 +48,8 @@ struct ForecastBadge: View {
         switch f.basis {
         case .ewma:         return model.t(.forecastBasisEwma)
         case .linear:       return model.t(.forecastBasisLinear)
+        case .pattern:      return model.t(.forecastBasisPattern)
+        case .blend:        return model.t(.forecastBasisBlend)
         case .insufficient: return ""
         }
     }

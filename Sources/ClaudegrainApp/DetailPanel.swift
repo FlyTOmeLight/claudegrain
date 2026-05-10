@@ -162,6 +162,12 @@ private struct ReceiptBody: View {
             SectionHeader(label: model.t(.sectionTopTools))
             TopToolsList()
 
+            if model.layoutMode == .scroll {
+                DashedDivider()
+                SectionHeader(label: model.t(.sectionTimeOfDay))
+                HeatmapView(buckets: model.hourlyBuckets)
+            }
+
             // ModelMix — fixed mode skips to fit HD screens.
             if model.layoutMode == .scroll {
                 DashedDivider()

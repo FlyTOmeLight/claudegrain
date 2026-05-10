@@ -225,17 +225,25 @@ final class AppCoordinator {
         // 2. WeekDelta.
         model.weekDelta = await WeekDelta.compute(db: db, now: now)
 
-        // 3. Forecast block + weekly.
+        // 3. Forecast block + weekly. Pass hourly_buckets to enable ADR-0016
+        // cycle-aware blend; the forecaster falls back to v1 ewma when hourly
+        // data is thin (<3 trusted slots in remaining window).
         let buckets = (try? await db.costPerBucket(
             start: now.addingTimeInterval(-3600),
             span:  3600,
             bucketSize: 5 * 60
         )) ?? []
+        let hourly = (try? await db.hourlyBuckets()) ?? []
+        model.hourlyBuckets = hourly
         if let session = model.sessionBlock {
-            model.forecastBlock = await forecaster.forecastSessionBlock(block: session, recent: buckets)
+            model.forecastBlock = await forecaster.forecastSessionBlock(
+                block: session, recent: buckets, hourly: hourly
+            )
         }
         if let weekly = model.weekly {
-            model.forecastWeekly = await forecaster.forecastWeekly(weekly: weekly, recent: buckets)
+            model.forecastWeekly = await forecaster.forecastWeekly(
+                weekly: weekly, recent: buckets, hourly: hourly
+            )
         }
         notifications.evaluateBurnRate(session: model.sessionBlock, forecast: model.forecastBlock)
 

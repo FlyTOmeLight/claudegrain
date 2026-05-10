@@ -10,6 +10,9 @@ final class AppModel: ObservableObject {
     @Published var allTimeTotals: DailyTotals = .zero
     @Published var topRepos: [RepoBreakdown] = []
     @Published var topTools: [ToolBreakdown] = []
+    /// 168 (weekday × hour) buckets driving the time-of-day heatmap. Loaded
+    /// from `EventsDatabase.hourlyBuckets()` (ADR-0016).
+    @Published var hourlyBuckets: [HourlyBucket] = []
     @Published var cacheHitRate: Double = 0
     @Published var weekSpend: [Double] = []
     @Published var forecastBlock: ForecastResult?
