@@ -27,6 +27,7 @@
 		7433F3F4E46824A24413FA94 /* FontRegistry.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA9A89C6C08397DC4C8A55FA /* FontRegistry.swift */; };
 		7C97B9D3AACA1DFA951C36BD /* ModelMixRow.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20D8DAF270067CD76DBB96DC /* ModelMixRow.swift */; };
 		81B9B5416EFE2C37F22C9BB2 /* ClaudegrainApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D83A5B513BF90F5716210DB2 /* ClaudegrainApp.swift */; };
+		8245274868044F8F6FAE98EA /* SettingsWindowController.swift in Sources */ = {isa = PBXBuildFile; fileRef = D04C92087F469AB355A3E9EC /* SettingsWindowController.swift */; };
 		8A030D46E91FDE3AA2DD0F90 /* ForecastBadge.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43719981B8AF7C226D033F39 /* ForecastBadge.swift */; };
 		8CB26F852CAC33EBD8CD71CF /* SpaceMono-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E69314E01C166186A51ACCFF /* SpaceMono-Bold.ttf */; };
 		959F3385588D1385842F6C89 /* WidgetSnapshotProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = 718996A698CD695F3C8A0D77 /* WidgetSnapshotProvider.swift */; };
@@ -34,6 +35,8 @@
 		A0B25CF528F80D030019D8B8 /* ClaudegrainCore in Frameworks */ = {isa = PBXBuildFile; productRef = F53D504F846286B316AD8455 /* ClaudegrainCore */; };
 		A11270679F1AA1D5C0D29E06 /* IngestPauseController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CFBF8348C6B7CECC7432B50 /* IngestPauseController.swift */; };
 		B3A0125ED2CA87FBE2943AF9 /* ExportSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = A6096A8D3F6790A903B99FB3 /* ExportSheet.swift */; };
+		B8D1F886A7D05899F0A6D684 /* Bundle+Version.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB217835D996D55C110A7DD6 /* Bundle+Version.swift */; };
+		BB2B62A6E5A612E067545BD5 /* HeatmapView.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA7AF5B2E6B7EF22B38BE5BE /* HeatmapView.swift */; };
 		BD5862DEDA694FD01C9EAA38 /* Localization.swift in Sources */ = {isa = PBXBuildFile; fileRef = B221A4F48C2AD04E0811E999 /* Localization.swift */; };
 		BF10F53E9C90CB79817AD5F0 /* NotificationActionRelay.swift in Sources */ = {isa = PBXBuildFile; fileRef = B5186F5929204E11318EFBBF /* NotificationActionRelay.swift */; };
 		C10D80A02407A0765AE11A8D /* SpaceMono-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 40954C425E4D7919DABF1057 /* SpaceMono-Regular.ttf */; };
@@ -91,6 +94,7 @@
 		90D0376FB3B6111657570650 /* ClaudegrainWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ClaudegrainWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		A59EAAC24988C85D9150A561 /* JetBrainsMono-Regular.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "JetBrainsMono-Regular.ttf"; sourceTree = "<group>"; };
 		A6096A8D3F6790A903B99FB3 /* ExportSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ExportSheet.swift; sourceTree = "<group>"; };
+		AA7AF5B2E6B7EF22B38BE5BE /* HeatmapView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HeatmapView.swift; sourceTree = "<group>"; };
 		AA9A89C6C08397DC4C8A55FA /* FontRegistry.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = FontRegistry.swift; sourceTree = "<group>"; };
 		AFD7A48FD4FCC7B7791DCD10 /* ClaudegrainApp.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ClaudegrainApp.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		B221A4F48C2AD04E0811E999 /* Localization.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Localization.swift; sourceTree = "<group>"; };
@@ -99,6 +103,7 @@
 		C61C20468723C3782A48DD5E /* StatusItemController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusItemController.swift; sourceTree = "<group>"; };
 		C939B8E89B89694B6900ED59 /* NotificationManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationManager.swift; sourceTree = "<group>"; };
 		CDF2CC0995168D923BCDFB66 /* MenuBarLabel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarLabel.swift; sourceTree = "<group>"; };
+		D04C92087F469AB355A3E9EC /* SettingsWindowController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsWindowController.swift; sourceTree = "<group>"; };
 		D7EFAC3AD75217C18D8B089D /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
 		D83A5B513BF90F5716210DB2 /* ClaudegrainApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ClaudegrainApp.swift; sourceTree = "<group>"; };
 		DF5853E6326BC2DCC517D8A6 /* AppCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppCoordinator.swift; sourceTree = "<group>"; };
@@ -106,6 +111,7 @@
 		EDF15D9863DA9505208B745F /* AppModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppModel.swift; sourceTree = "<group>"; };
 		F5671D9EA86B2022119CEBC8 /* SparklineComponents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SparklineComponents.swift; sourceTree = "<group>"; };
 		F6EC0EED2D06F6FBC749187E /* QuietHoursTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuietHoursTab.swift; sourceTree = "<group>"; };
+		FB217835D996D55C110A7DD6 /* Bundle+Version.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "Bundle+Version.swift"; sourceTree = "<group>"; };
 		FB5F22589F77F15ED6385617 /* Preferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Preferences.swift; sourceTree = "<group>"; };
 		FDC261A79AD51497DF06AC23 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
@@ -196,12 +202,14 @@
 				8645D4FEFF8389235D2EED45 /* Settings */,
 				DF5853E6326BC2DCC517D8A6 /* AppCoordinator.swift */,
 				EDF15D9863DA9505208B745F /* AppModel.swift */,
+				FB217835D996D55C110A7DD6 /* Bundle+Version.swift */,
 				D83A5B513BF90F5716210DB2 /* ClaudegrainApp.swift */,
 				0AD313C298B9597F02A92A5B /* CommitmentsSheet.swift */,
 				0DC8D1C020D92FB0E44FF909 /* DetailPanel.swift */,
 				A6096A8D3F6790A903B99FB3 /* ExportSheet.swift */,
 				AA9A89C6C08397DC4C8A55FA /* FontRegistry.swift */,
 				43719981B8AF7C226D033F39 /* ForecastBadge.swift */,
+				AA7AF5B2E6B7EF22B38BE5BE /* HeatmapView.swift */,
 				8CFBF8348C6B7CECC7432B50 /* IngestPauseController.swift */,
 				B221A4F48C2AD04E0811E999 /* Localization.swift */,
 				B9280B0D7EA67458F59DF7DC /* LoginItemController.swift */,
@@ -213,6 +221,7 @@
 				8CB74C6BA514318098B68774 /* PaperEdge.swift */,
 				FB5F22589F77F15ED6385617 /* Preferences.swift */,
 				2B9BA99F817271633879D6C0 /* ReceiptComponents.swift */,
+				D04C92087F469AB355A3E9EC /* SettingsWindowController.swift */,
 				F5671D9EA86B2022119CEBC8 /* SparklineComponents.swift */,
 				C61C20468723C3782A48DD5E /* StatusItemController.swift */,
 				D7EFAC3AD75217C18D8B089D /* Theme.swift */,
@@ -359,12 +368,14 @@
 				5422A732EB338F62B33D4640 /* AppCoordinator.swift in Sources */,
 				5803E1E949FA47F29E5DF506 /* AppModel.swift in Sources */,
 				F601580B7DC07C5A0D8C69ED /* BudgetsTab.swift in Sources */,
+				B8D1F886A7D05899F0A6D684 /* Bundle+Version.swift in Sources */,
 				81B9B5416EFE2C37F22C9BB2 /* ClaudegrainApp.swift in Sources */,
 				212993E04C6C0FE1A8AB2169 /* CommitmentsSheet.swift in Sources */,
 				25790F334E2AB10BE9B6EAC7 /* DetailPanel.swift in Sources */,
 				B3A0125ED2CA87FBE2943AF9 /* ExportSheet.swift in Sources */,
 				7433F3F4E46824A24413FA94 /* FontRegistry.swift in Sources */,
 				8A030D46E91FDE3AA2DD0F90 /* ForecastBadge.swift in Sources */,
+				BB2B62A6E5A612E067545BD5 /* HeatmapView.swift in Sources */,
 				A11270679F1AA1D5C0D29E06 /* IngestPauseController.swift in Sources */,
 				BD5862DEDA694FD01C9EAA38 /* Localization.swift in Sources */,
 				52020EA201971FE2A381BEF9 /* LoginItemController.swift in Sources */,
@@ -377,6 +388,7 @@
 				1FA5F7CEB9905074515A8524 /* Preferences.swift in Sources */,
 				176B99D6D72D4E4EBE54E160 /* QuietHoursTab.swift in Sources */,
 				3D5AEEB5A72D12C7A8E184AB /* ReceiptComponents.swift in Sources */,
+				8245274868044F8F6FAE98EA /* SettingsWindowController.swift in Sources */,
 				45D716D18783B4F788B3270A /* SparklineComponents.swift in Sources */,
 				549ABEB1DB9C1561A320D885 /* StatusItemController.swift in Sources */,
 				50AFD3FEEC58F85716E81245 /* Theme.swift in Sources */,

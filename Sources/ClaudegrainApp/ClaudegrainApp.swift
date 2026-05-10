@@ -6,10 +6,11 @@ struct ClaudegrainApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
 
     var body: some Scene {
-        Settings {
-            SettingsView()
-                .environmentObject(delegate.model)
-        }
+        // App protocol requires a Scene. We host Settings ourselves via
+        // `SettingsWindowController` (LSUIElement breaks the stock Settings
+        // scene's responder routing), so this is a placeholder that never
+        // surfaces — there's no main menu to invoke it from.
+        Settings { EmptyView() }
     }
 }
 

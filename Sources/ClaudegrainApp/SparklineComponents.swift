@@ -2,9 +2,25 @@ import SwiftUI
 
 /// 7d main line chart with grid lines, area fill, today highlight.
 struct WeekLineChart: View {
-    let points: [Double]   // 7 values
+    let points: [Double]   // 7 values, oldest → newest. Last entry is today
+                           // per `EventsDatabase.costPerDay`, but the SQLite
+                           // bucket can lag the OAuth/live total — `todayValue`
+                           // is always treated as the source of truth for the
+                           // last point so the dot, area, and label agree.
     let todayValue: Double
     @Environment(\.theme) private var theme
+
+    private var effectivePoints: [Double] {
+        guard points.count == 7 else { return points }
+        var p = points
+        p[6] = todayValue
+        return p
+    }
+
+    private var scaleMax: Double {
+        let raw = max(effectivePoints.max() ?? 0, todayValue, 0.01)
+        return niceCeil(raw)
+    }
 
     var body: some View {
         GeometryReader { geo in
@@ -21,6 +37,7 @@ struct WeekLineChart: View {
 
                 // Area + line
                 let pts = computePoints(in: geo.size)
+                let values = effectivePoints
                 if !pts.isEmpty {
                     Path { p in
                         p.move(to: CGPoint(x: pts[0].x, y: geo.size.height))
@@ -58,30 +75,106 @@ struct WeekLineChart: View {
                         .foregroundStyle(theme.inkBold)
                         .neonGlow(color: theme.inkBold, radius: 2, opacity: theme.glowEnabled ? 0.6 : 0)
                         .position(x: pts.last!.x, y: max(pts.last!.y - 10, 8))
-                }
+                        .allowsHitTesting(false)
 
-                // Y reference labels
-                VStack {
-                    HStack { Text("$10").font(.cgMonoTiny).foregroundStyle(theme.ink.opacity(0.5)); Spacer() }
-                    Spacer()
-                    HStack { Text("$ 5").font(.cgMonoTiny).foregroundStyle(theme.ink.opacity(0.5)); Spacer() }
-                    Spacer()
+                    // Annotate just the week's peak so the user has a Y-axis
+                    // anchor without a full grid scale that crowds the
+                    // plot. Skipped when the peak IS today — today's own
+                    // bold label already serves as the anchor.
+                    if let peakIdx = peakIndex(values), peakIdx < pts.count - 1 {
+                        // Offset the label to the right of the dot so they
+                        // don't overlap. Label is roughly 60pt wide; nudging
+                        // by +30 puts the dot at the *left* of the label.
+                        let peakX = pts[peakIdx].x + 30
+                        let peakY = max(pts[peakIdx].y - 2, 8)
+                        Text("max \(formatPointLabel(values[peakIdx]))")
+                            .font(.custom("JetBrains Mono", size: 9))
+                            .foregroundStyle(theme.ink.opacity(0.65))
+                            .position(x: peakX, y: peakY)
+                            .allowsHitTesting(false)
+                    }
                 }
             }
         }
         .frame(height: 56)
     }
 
+    private func peakIndex(_ vs: [Double]) -> Int? {
+        guard !vs.isEmpty else { return nil }
+        var idx = 0
+        for i in 1..<vs.count where vs[i] > vs[idx] { idx = i }
+        return idx
+    }
+
+    private func formatPointLabel(_ v: Double) -> String {
+        if v <= 0 { return "$0" }
+        if v >= 1000 {
+            let k = v / 1000
+            return k >= 10
+                ? String(format: "$%.0fk", k)
+                : String(format: "$%.1fk", k)
+        }
+        if v >= 100 { return String(format: "$%.0f", v) }
+        if v >= 10  { return String(format: "$%.0f", v) }
+        return String(format: "$%.1f", v)
+    }
+
     private func computePoints(in size: CGSize) -> [CGPoint] {
-        guard !points.isEmpty else { return [] }
-        let maxV = max(points.max() ?? 1, 1)
-        let n = max(points.count - 1, 1)
+        let values = effectivePoints
+        guard !values.isEmpty else { return [] }
+        let maxV = scaleMax
+        let n = max(values.count - 1, 1)
         let leftPad: CGFloat = 22
         let usableW = size.width - leftPad - 12
-        return points.enumerated().map { i, v in
+        // Reserve top + bottom padding so the dots can never escape the
+        // chart frame; the previous formula let v ≈ 0 dots render at
+        // size.height + 4, which painted them on top of the day-letter row
+        // below the chart.
+        let yPad: CGFloat = 4
+        let usableH = size.height - 2 * yPad
+        return values.enumerated().map { i, v in
             let x = leftPad + usableW * CGFloat(i) / CGFloat(n)
-            let y = size.height * (1 - CGFloat(v / maxV)) + 4
+            let y = yPad + usableH * CGFloat(1 - v / maxV)
             return CGPoint(x: x, y: y)
+        }
+    }
+
+    /// Round v up to the next "nice" axis tick so the top label is round
+    /// (e.g. 2525 → 3000, 181 → 200, 7.3 → 8).
+    private func niceCeil(_ v: Double) -> Double {
+        guard v > 0 else { return 1 }
+        let step: Double
+        if v < 5         { step = 1 }
+        else if v < 10   { step = 5 }
+        else if v < 100  { step = 10 }
+        else if v < 1000 { step = 100 }
+        else if v < 10000 { step = 1000 }
+        else {
+            step = pow(10.0, floor(log10(v)))
+        }
+        return (v / step).rounded(.up) * step
+    }
+
+    private func tooltip(dayIndex i: Int, value: Double) -> String {
+        // points are oldest → newest; index 6 is today. Walk back from today.
+        let labels = weekdayLabels()
+        let label = (i >= 0 && i < labels.count) ? labels[i] : ""
+        return label.isEmpty
+            ? String(format: "$%.2f", value)
+            : "\(label) · \(String(format: "$%.2f", value))"
+    }
+
+    private func weekdayLabels() -> [String] {
+        // Localized abbreviated weekday names ending at today.
+        let cal = Calendar.current
+        let today = cal.startOfDay(for: .now)
+        let fmt = DateFormatter()
+        fmt.calendar = cal
+        fmt.locale = .current
+        fmt.dateFormat = "EEE"
+        return (0..<7).compactMap { offset in
+            let d = cal.date(byAdding: .day, value: -(6 - offset), to: today)
+            return d.map { fmt.string(from: $0) }
         }
     }
 }
@@ -104,17 +197,19 @@ struct WeekChartPlaceholder: View {
     }
 }
 
-/// 7d day labels strip (M T W T F S S). Sunday bold neon.
+/// 7d day labels strip (Mo Tu We Th Fr Sa Su). Two-letter ISO abbrevs so
+/// Saturday and Sunday don't both read as "S" — the previous single-letter
+/// strip ambiguated weekend days. Sunday gets bold neon for today.
 struct WeekDayLabels: View {
     @Environment(\.theme) private var theme
     var body: some View {
         HStack {
             Spacer().frame(width: 14)
-            ForEach(["M", "T", "W", "T", "F", "S"], id: \.self) { d in
+            ForEach(["Mo", "Tu", "We", "Th", "Fr", "Sa"], id: \.self) { d in
                 Text(d).font(.cgMonoXSmall).foregroundStyle(theme.ink.opacity(0.55))
                     .frame(maxWidth: .infinity)
             }
-            Text("S").font(.cgMonoXSmall.weight(.bold)).foregroundStyle(theme.inkBold)
+            Text("Su").font(.cgMonoXSmall.weight(.bold)).foregroundStyle(theme.inkBold)
                 .frame(maxWidth: .infinity)
             Spacer().frame(width: 4)
         }
