@@ -281,6 +281,42 @@ final class EventsDatabaseTests: XCTestCase {
         XCTAssertEqual(rate, 0.70, accuracy: 0.0001)
     }
 
+    // MARK: - v4 tools_json (ADR-0015)
+
+    func testToolsJsonRoundTrip() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let events = [
+            makeEvent(model: "claude-sonnet-4-6", inputTokens: 10, ts: now,
+                     sessionId: "s1", tools: ["Read", "Read", "Bash"]),
+            makeEvent(model: "claude-sonnet-4-6", inputTokens: 10, ts: now,
+                     sessionId: "s2", tools: []),
+        ]
+        try await db.insertEvents(
+            events,
+            from: "/tmp/tools.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 0, inode: 1, deviceId: 1, sizeAtLastRead: 0)
+        )
+        let row0 = try await db.toolsRaw(sourceFile: "/tmp/tools.jsonl", offset: 0)
+        XCTAssertEqual(row0, ["Read", "Read", "Bash"])
+        let row1 = try await db.toolsRaw(sourceFile: "/tmp/tools.jsonl", offset: 1)
+        XCTAssertNil(row1, "empty tools must persist as NULL, not '[]'")
+    }
+
+    func testToolsJsonPreservesOrderAndDuplicates() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        try await db.insertEvents(
+            [makeEvent(model: "m", ts: Date(), tools: ["a", "b", "a", "c", "a"])],
+            from: "/tmp/dup.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 0, inode: 1, deviceId: 1, sizeAtLastRead: 0)
+        )
+        let raw = try await db.toolsRaw(sourceFile: "/tmp/dup.jsonl", offset: 0)
+        XCTAssertEqual(raw, ["a", "b", "a", "c", "a"],
+                      "tools_json must store raw array; share dedup happens at read time")
+    }
+
     private func makeEvent(
         model: String,
         inputTokens: Int = 0,

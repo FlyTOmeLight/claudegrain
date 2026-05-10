@@ -104,6 +104,11 @@ public actor EventsDatabase {
                   )
             """)
         }
+        // v4: tool attribution v2 (ADR-0015). Persist full per-turn tools array as
+        // JSON. Legacy rows stay NULL → aggregation path falls back to primary_tool.
+        migrator.registerMigration("v4-tools-json") { db in
+            try db.execute(sql: "ALTER TABLE events ADD COLUMN tools_json TEXT")
+        }
         try migrator.migrate(pool)
     }
 
@@ -119,13 +124,16 @@ public actor EventsDatabase {
             var runningOffset = offset
             for event in events {
                 let cost = CostCalculator.cost(for: event)
+                let toolsJson: String? = event.tools.isEmpty
+                    ? nil
+                    : (try? JSONEncoder().encode(event.tools)).flatMap { String(data: $0, encoding: .utf8) }
                 try db.execute(
                     sql: """
                     INSERT OR IGNORE INTO events
                     (ts, session_id, cwd, git_branch, model, primary_tool, mcp_server,
                      in_tok, out_tok, cache_create_tok, cache_read_tok, cost_usd,
-                     source_file, source_offset, dedup_key)
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                     source_file, source_offset, dedup_key, tools_json)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                     """,
                     arguments: [
                         event.timestamp,
@@ -143,6 +151,7 @@ public actor EventsDatabase {
                         sourceFile,
                         Int64(runningOffset),
                         event.dedupKey,
+                        toolsJson,
                     ]
                 )
                 runningOffset += 1
@@ -649,6 +658,23 @@ public actor EventsDatabase {
             }
         }
         return output
+    }
+
+    // MARK: - Test helpers (ADR-0015)
+
+    /// Decoded tools array stored on the row matching (sourceFile, offset). nil when
+    /// the column is NULL (legacy v1–v3 row) or no row matches. Internal — used by
+    /// migration / roundtrip tests for tools_json.
+    func toolsRaw(sourceFile: String, offset: UInt64) throws -> [String]? {
+        try pool.read { db in
+            let raw: String? = try String.fetchOne(
+                db,
+                sql: "SELECT tools_json FROM events WHERE source_file = ? AND source_offset = ?",
+                arguments: [sourceFile, Int64(offset)]
+            )
+            guard let raw, let data = raw.data(using: .utf8) else { return nil }
+            return try? JSONDecoder().decode([String].self, from: data)
+        }
     }
 
     // MARK: - Helpers
