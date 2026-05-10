@@ -23,6 +23,9 @@ enum L: String, Hashable {
     case sectionUsageLimits
     case sectionSpend7d
     case sectionTopCosts
+    case sectionTopTools
+    case sectionTimeOfDay
+    case heatmapEmpty
 
     // Vitals
     case vitalSession
@@ -55,6 +58,8 @@ enum L: String, Hashable {
     case forecastConfidenceHigh   // "high"
     case forecastBasisEwma        // "ewma"
     case forecastBasisLinear      // "linear"
+    case forecastBasisPattern     // "pattern" — pure historical hourly projection
+    case forecastBasisBlend       // "blend"   — current burn × historical pattern
 
     // v0.2 — week delta row
     case weekDeltaLabel           // "Δ vs last week"
@@ -114,6 +119,7 @@ enum L: String, Hashable {
     // v0.2 — empty states
     case chartCollectingBaseline
     case topReposWatching
+    case topToolsWatching
     case oauthDegradedTitle
     case oauthDegradedDismiss
     case statusAsOf
@@ -201,6 +207,9 @@ enum L10n {
         .sectionUsageLimits: "USAGE LIMITS",
         .sectionSpend7d: "7d SPEND · LINE",
         .sectionTopCosts: "TOP COSTS · 7d trend",
+        .sectionTopTools: "TOP TOOLS · by share",
+        .sectionTimeOfDay: "TIME OF DAY · 7d EWMA",
+        .heatmapEmpty: "Collecting time-of-day pattern…",
 
         .vitalSession: "SESSION",
         .vitalWeekly: "WEEKLY",
@@ -229,6 +238,8 @@ enum L10n {
         .forecastConfidenceHigh:   "high",
         .forecastBasisEwma:        "ewma",
         .forecastBasisLinear:      "linear",
+        .forecastBasisPattern:     "pattern",
+        .forecastBasisBlend:       "blend",
         .weekDeltaLabel:           "Δ vs last week",
         .weekDeltaPctUp:           "+%d%% · cache %@",
         .weekDeltaPctDown:         "%d%% · cache %@",
@@ -276,6 +287,7 @@ enum L10n {
 
         .chartCollectingBaseline:   "Collecting 7-day baseline…",
         .topReposWatching:          "watching ~/.claude/projects…",
+        .topToolsWatching:          "no tool turns yet…",
         .oauthDegradedTitle:        "Real-time quota disabled — showing JSONL estimate.",
         .oauthDegradedDismiss:      "Dismiss",
         .statusAsOf:                "as of %@",
@@ -347,6 +359,9 @@ enum L10n {
         .sectionUsageLimits: "用量限额",
         .sectionSpend7d: "7 日花费 · 折线",
         .sectionTopCosts: "Top 仓库 · 7 日趋势",
+        .sectionTopTools: "Top 工具 · 按 share",
+        .sectionTimeOfDay: "时段分布 · 7 日 EWMA",
+        .heatmapEmpty: "正在采集时段节律…",
 
         .vitalSession: "本次会话",
         .vitalWeekly: "本周",
@@ -374,6 +389,8 @@ enum L10n {
         .forecastConfidenceMedium: "中等",
         .forecastConfidenceHigh:   "高信心",
         .forecastBasisEwma:        "EWMA",
+        .forecastBasisPattern:     "节律",
+        .forecastBasisBlend:       "融合",
         .forecastBasisLinear:      "线性",
         .weekDeltaLabel:           "Δ 对比上周",
         .weekDeltaPctUp:           "+%d%% · 缓存 %@",
@@ -422,6 +439,7 @@ enum L10n {
 
         .chartCollectingBaseline:   "正在采集 7 天基线…",
         .topReposWatching:          "监听 ~/.claude/projects…",
+        .topToolsWatching:          "暂无工具调用…",
         .oauthDegradedTitle:        "实时配额已停用 — 当前为 JSONL 估算值。",
         .oauthDegradedDismiss:      "关闭",
         .statusAsOf:                "(于 %@)",

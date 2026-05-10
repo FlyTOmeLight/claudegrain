@@ -16,6 +16,10 @@ final class AppCoordinator {
     private let dataSource: DataSourceCoordinator
     private let notifications: NotificationManager
     private let forecaster = Forecaster()
+    /// JSONL P90 fallback per ADR-0001. Wired in production for the first
+    /// time in v0.2 — previously declared but never called, leaving users
+    /// without OAuth credentials stuck on `0% session` forever.
+    private let estimator: LimitEstimator
     private var ingestTask: Task<Void, Never>?
     private var dataSourceTask: Task<Void, Never>?
 
@@ -48,6 +52,7 @@ final class AppCoordinator {
         }
         self.ingest = IngestActor(db: db)
         self.dataSource = DataSourceCoordinator()
+        self.estimator = LimitEstimator(db: db)
 
         // Reuse the BudgetStore owned by AppModel so the Settings UI and
         // the NotificationManager observe the same instance.
@@ -220,21 +225,56 @@ final class AppCoordinator {
         // 2. WeekDelta.
         model.weekDelta = await WeekDelta.compute(db: db, now: now)
 
-        // 3. Forecast block + weekly.
+        // 3. Forecast block + weekly. Pass hourly_buckets to enable ADR-0016
+        // cycle-aware blend; the forecaster falls back to v1 ewma when hourly
+        // data is thin (<3 trusted slots in remaining window).
         let buckets = (try? await db.costPerBucket(
             start: now.addingTimeInterval(-3600),
             span:  3600,
             bucketSize: 5 * 60
         )) ?? []
+        let hourly = (try? await db.hourlyBuckets()) ?? []
+        model.hourlyBuckets = hourly
         if let session = model.sessionBlock {
-            model.forecastBlock = await forecaster.forecastSessionBlock(block: session, recent: buckets)
+            model.forecastBlock = await forecaster.forecastSessionBlock(
+                block: session, recent: buckets, hourly: hourly
+            )
         }
         if let weekly = model.weekly {
-            model.forecastWeekly = await forecaster.forecastWeekly(weekly: weekly, recent: buckets)
+            model.forecastWeekly = await forecaster.forecastWeekly(
+                weekly: weekly, recent: buckets, hourly: hourly
+            )
         }
         notifications.evaluateBurnRate(session: model.sessionBlock, forecast: model.forecastBlock)
 
+        await fillJSONLFallbackIfNeeded()
         await writeWidgetSnapshotIfDue()
+    }
+
+    /// JSONL P90 fallback. When OAuth path is not live (boot, no creds,
+    /// 4xx, deprecated), populate sessionBlock + weekly from local jsonl
+    /// history so the popover shows numbers instead of `—`. OAuth (when it
+    /// later succeeds) overrides on next snapshot.
+    private func fillJSONLFallbackIfNeeded() async {
+        guard model.dataSourceStatus != .oauthLive else { return }
+        var didFill = false
+        if model.sessionBlock == nil {
+            if let s = try? await estimator.estimateSessionBlock() {
+                model.sessionBlock = s
+                didFill = true
+            }
+        }
+        if model.weekly == nil {
+            if let w = try? await estimator.estimateWeekly() {
+                model.weekly = w
+                didFill = true
+            }
+        }
+        // Promote stuck `.unknown` to `.jsonlOnly` once the fallback
+        // succeeds — keeps the header label honest about what's on screen.
+        if didFill && model.dataSourceStatus == .unknown {
+            model.dataSourceStatus = .jsonlOnly
+        }
     }
 
     /// Builds a `WidgetSnapshot` from the current `AppModel` state and writes

@@ -158,6 +158,16 @@ private struct ReceiptBody: View {
             SectionHeader(label: model.t(.sectionTopCosts))
             TopCostsList()
 
+            DashedDivider()
+            SectionHeader(label: model.t(.sectionTopTools))
+            TopToolsList()
+
+            if model.layoutMode == .scroll {
+                DashedDivider()
+                SectionHeader(label: model.t(.sectionTimeOfDay))
+                HeatmapView(buckets: model.hourlyBuckets)
+            }
+
             // ModelMix — fixed mode skips to fit HD screens.
             if model.layoutMode == .scroll {
                 DashedDivider()
@@ -314,6 +324,46 @@ private struct TopCostsList: View {
         let priorAvg = repo.spend7d.dropLast().reduce(0, +) / Double(max(repo.spend7d.count - 1, 1))
         guard priorAvg > 0.01 else { return nil }
         return Int(((today - priorAvg) / priorAvg * 100).rounded())
+    }
+}
+
+/// "TOP TOOLS · by share" — renders the topTools breakdown using ADR-0015
+/// block-share attribution. MCP tools collapse `mcp__server__name` → `server·name`
+/// for readability. No sparkline / delta yet (per-tool 7d trend is a follow-up).
+private struct TopToolsList: View {
+    @EnvironmentObject private var model: AppModel
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        VStack(spacing: 2) {
+            if model.topTools.isEmpty {
+                Text(model.t(.topToolsWatching))
+                    .font(.cgMonoSmall)
+                    .tracking(0.6)
+                    .foregroundStyle(theme.ink.opacity(0.55))
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding(.vertical, 4)
+            } else {
+                ForEach(Array(model.topTools.prefix(5).enumerated()), id: \.offset) { idx, tool in
+                    CostRow(
+                        rank: idx + 1,
+                        type: "[T]",
+                        name: displayName(for: tool),
+                        costUSD: tool.costUSD,
+                        deltaPct: nil,
+                        sparkPoints: []
+                    )
+                }
+            }
+        }
+    }
+
+    private func displayName(for tool: ToolBreakdown) -> String {
+        if let server = tool.mcpServer,
+           let parts = tool.toolName.mcpComponents() {
+            return "\(server)·\(parts.tool)"
+        }
+        return tool.toolName
     }
 }
 

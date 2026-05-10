@@ -281,6 +281,117 @@ final class EventsDatabaseTests: XCTestCase {
         XCTAssertEqual(rate, 0.70, accuracy: 0.0001)
     }
 
+    // MARK: - v4 tools_json (ADR-0015)
+
+    func testToolsJsonRoundTrip() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        let events = [
+            makeEvent(model: "claude-sonnet-4-6", inputTokens: 10, ts: now,
+                     sessionId: "s1", tools: ["Read", "Read", "Bash"]),
+            makeEvent(model: "claude-sonnet-4-6", inputTokens: 10, ts: now,
+                     sessionId: "s2", tools: []),
+        ]
+        try await db.insertEvents(
+            events,
+            from: "/tmp/tools.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 0, inode: 1, deviceId: 1, sizeAtLastRead: 0)
+        )
+        let row0 = try await db.toolsRaw(sourceFile: "/tmp/tools.jsonl", offset: 0)
+        XCTAssertEqual(row0, ["Read", "Read", "Bash"])
+        let row1 = try await db.toolsRaw(sourceFile: "/tmp/tools.jsonl", offset: 1)
+        XCTAssertNil(row1, "empty tools must persist as NULL, not '[]'")
+    }
+
+    func testToolsJsonPreservesOrderAndDuplicates() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        try await db.insertEvents(
+            [makeEvent(model: "m", ts: Date(), tools: ["a", "b", "a", "c", "a"])],
+            from: "/tmp/dup.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 0, inode: 1, deviceId: 1, sizeAtLastRead: 0)
+        )
+        let raw = try await db.toolsRaw(sourceFile: "/tmp/dup.jsonl", offset: 0)
+        XCTAssertEqual(raw, ["a", "b", "a", "c", "a"],
+                      "tools_json must store raw array; share dedup happens at read time")
+    }
+
+    func testTopToolsDistributesTokensByShares() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        // Single turn with [Read, Read, Bash], $3 cost, 300 tokens.
+        // Per ADR-0015 shares: Read=2/3, Bash=1/3 → Read=$2/200tok, Bash=$1/100tok.
+        try await db.insertEvents(
+            [makeEvent(model: "claude-sonnet-4-6", inputTokens: 300, ts: now,
+                      tools: ["Read", "Read", "Bash"])],
+            from: "/tmp/shares.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 0, inode: 1, deviceId: 1, sizeAtLastRead: 0)
+        )
+        let tools = try await db.topTools(on: now)
+        XCTAssertEqual(tools.count, 2)
+        let read = try XCTUnwrap(tools.first { $0.toolName == "Read" })
+        let bash = try XCTUnwrap(tools.first { $0.toolName == "Bash" })
+        XCTAssertEqual(read.totalTokens, 200, "2/3 of 300 = 200")
+        XCTAssertEqual(bash.totalTokens, 100, "1/3 of 300 = 100")
+        XCTAssertEqual(read.costUSD, bash.costUSD * 2.0, accuracy: 1e-9)
+    }
+
+    func testTopToolsFallsBackToPrimaryToolForLegacyRows() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        try await db.insertEvents(
+            [makeEvent(model: "claude-sonnet-4-6", inputTokens: 100, ts: now,
+                      tools: ["Read", "Bash"])],
+            from: "/tmp/legacy.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 0, inode: 1, deviceId: 1, sizeAtLastRead: 0)
+        )
+        // Simulate a v1–v3 row: primary_tool retained, tools_json NULL.
+        try await db._eraseToolsJsonForTesting(sourceFile: "/tmp/legacy.jsonl")
+        let tools = try await db.topTools(on: now)
+        XCTAssertEqual(tools.count, 1)
+        XCTAssertEqual(tools.first?.toolName, "Read", "primaryTool falls through when tools_json NULL")
+        XCTAssertEqual(tools.first?.totalTokens, 100, "legacy row gets 100% attribution")
+    }
+
+    func testTopToolsAggregatesAcrossEvents() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        // 3 turns. Combined tokens for Read = 100*0.5 + 50*1.0 + 60*(2/3) = 50 + 50 + 40 = 140.
+        // Bash = 100*0.5 + 60*(1/3) = 50 + 20 = 70.
+        try await db.insertEvents(
+            [
+                makeEvent(model: "m", inputTokens: 100, ts: now, sessionId: "s", tools: ["Read", "Bash"]),
+                makeEvent(model: "m", inputTokens: 50,  ts: now, sessionId: "s", tools: ["Read"]),
+                makeEvent(model: "m", inputTokens: 60,  ts: now, sessionId: "s", tools: ["Read", "Read", "Bash"]),
+            ],
+            from: "/tmp/agg.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 0, inode: 1, deviceId: 1, sizeAtLastRead: 0)
+        )
+        let tools = try await db.topTools(on: now)
+        let read = try XCTUnwrap(tools.first { $0.toolName == "Read" })
+        let bash = try XCTUnwrap(tools.first { $0.toolName == "Bash" })
+        XCTAssertEqual(read.totalTokens, 140)
+        XCTAssertEqual(bash.totalTokens, 70)
+    }
+
+    func testTopToolsParsesMcpServerForMcpTools() async throws {
+        let db = try EventsDatabase(url: dbURL)
+        let now = Date()
+        try await db.insertEvents(
+            [makeEvent(model: "m", inputTokens: 10, ts: now, tools: ["mcp__exa__search"])],
+            from: "/tmp/mcp.jsonl",
+            startingAt: 0,
+            cursor: .init(offset: 0, inode: 1, deviceId: 1, sizeAtLastRead: 0)
+        )
+        let tools = try await db.topTools(on: now)
+        XCTAssertEqual(tools.first?.toolName, "mcp__exa__search")
+        XCTAssertEqual(tools.first?.mcpServer, "exa")
+    }
+
     private func makeEvent(
         model: String,
         inputTokens: Int = 0,

@@ -61,6 +61,18 @@ public struct UsageEvent: Equatable, Sendable {
     /// tool_use block. Returns nil for non-tool turns (final assistant text).
     public var primaryTool: String? { tools.first }
 
+    /// ADR-0015 v2 attribution. Block-count proportional with dedup by tool
+    /// name. Given `tools = [Read, Read, Bash]` ⇒ `[Read: 2/3, Bash: 1/3]`.
+    /// Nil for non-tool turns. Multipliable against `costUSD` / `totalTokens`
+    /// in aggregation: `share × turn_total`. See ADR-0015 §"Algorithm".
+    public var toolShares: [String: Double]? {
+        guard !tools.isEmpty else { return nil }
+        var counts: [String: Int] = [:]
+        for t in tools { counts[t, default: 0] += 1 }
+        let n = Double(tools.count)
+        return counts.mapValues { Double($0) / n }
+    }
+
     /// Family grouping derived from `model`. ADR-0006: grouped in Swift, not SQL.
     public var modelFamily: ModelFamily { ModelFamily.parse(model) }
 
@@ -137,6 +149,29 @@ public struct RepoBreakdown: Identifiable, Sendable {
         self.totalTokens = totalTokens
         self.spend7d = spend7d
     }
+}
+
+/// Per-(weekday, hour) summary stored in `hourly_buckets`. Cost / tokens /
+/// sample_count are EWMA-decayed (7-day half-life) so the bucket reflects
+/// recent patterns. Powers the time-of-day heatmap and cycle-aware forecast.
+public struct HourlyBucket: Sendable, Equatable {
+    public let weekday: Int      // 1=Sun … 7=Sat (Calendar.component(.weekday))
+    public let hour: Int         // 0…23
+    public let costUSD: Double
+    public let tokens: Int
+    public let sampleCount: Double
+
+    public init(weekday: Int, hour: Int, costUSD: Double, tokens: Int, sampleCount: Double) {
+        self.weekday = weekday
+        self.hour = hour
+        self.costUSD = costUSD
+        self.tokens = tokens
+        self.sampleCount = sampleCount
+    }
+
+    /// Floor used by Forecaster + heatmap legend: hours with <1 effective sample
+    /// are too thin to project from.
+    public var isTrusted: Bool { sampleCount >= 1.0 }
 }
 
 public struct ToolBreakdown: Identifiable, Sendable {

@@ -126,4 +126,129 @@ final class ForecasterTests: XCTestCase {
         XCTAssertEqual(r5.confidence,  .medium)
         XCTAssertEqual(r10.confidence, .high)
     }
+
+    // MARK: - v2 cycle-aware (ADR-0016)
+
+    /// Default `hourly: []` keeps v1 behavior — basis stays `.ewma`.
+    func testEmptyHourlyKeepsEwmaBasis() async {
+        let f = Forecaster()
+        let now = Date()
+        let snap = SessionBlockSnapshot(
+            startedAt: now.addingTimeInterval(-1800),
+            resetsAt:  now.addingTimeInterval(16_200),
+            usedFraction: 0.10, totalTokens: 1
+        )
+        let buckets = makeRecentBuckets(now: now, count: 5)
+        let r = await f.forecastSessionBlock(block: snap, recent: buckets)
+        XCTAssertEqual(r.basis, ForecastResult.Basis.ewma)
+    }
+
+    /// Trusted hourly + recent buckets → blend basis.
+    func testHourlyTriggersBlendBasis() async {
+        let f = Forecaster()
+        let now = Date()
+        let snap = SessionBlockSnapshot(
+            startedAt: now.addingTimeInterval(-1800),
+            resetsAt:  now.addingTimeInterval(16_200), // 4.5h remaining
+            usedFraction: 0.10, totalTokens: 1
+        )
+        let recent = makeRecentBuckets(now: now, count: 5)
+        let r = await f.forecastSessionBlock(
+            block: snap,
+            recent: recent,
+            hourly: trustedAllHours(),
+            now: now
+        )
+        XCTAssertEqual(r.basis, ForecastResult.Basis.blend, "trusted hourly + recent ⇒ blend")
+    }
+
+    /// Trusted hourly with empty `recent` → pure pattern basis.
+    func testEmptyRecentWithHourlyGivesPatternBasis() async {
+        let f = Forecaster()
+        let now = Date()
+        let snap = SessionBlockSnapshot(
+            startedAt: now.addingTimeInterval(-1800),
+            resetsAt:  now.addingTimeInterval(16_200),
+            usedFraction: 0.10, totalTokens: 1
+        )
+        let r = await f.forecastSessionBlock(
+            block: snap,
+            recent: [],
+            hourly: trustedAllHours(),
+            now: now
+        )
+        XCTAssertEqual(r.basis, ForecastResult.Basis.pattern, "no current burn but trusted pattern ⇒ pattern")
+    }
+
+    /// Sparse / untrusted hourly (sample_count<1 in window) → falls back to ewma.
+    func testUntrustedHourlyFallsBackToEwma() async {
+        let f = Forecaster()
+        let now = Date()
+        let snap = SessionBlockSnapshot(
+            startedAt: now.addingTimeInterval(-1800),
+            resetsAt:  now.addingTimeInterval(16_200),
+            usedFraction: 0.10, totalTokens: 1
+        )
+        let recent = makeRecentBuckets(now: now, count: 5)
+        // All buckets exist but sample_count = 0 → not trusted.
+        var untrusted: [HourlyBucket] = []
+        for wd in 1...7 {
+            for h in 0...23 {
+                untrusted.append(HourlyBucket(weekday: wd, hour: h, costUSD: 5.0, tokens: 0, sampleCount: 0.0))
+            }
+        }
+        let r = await f.forecastSessionBlock(
+            block: snap, recent: recent, hourly: untrusted, now: now
+        )
+        XCTAssertEqual(r.basis, ForecastResult.Basis.ewma, "no trusted hourly slots → no blend")
+    }
+
+    /// Pattern much heavier than current burn → blend hitAt closer than pure ewma.
+    func testHighPatternCostMovesHitEarlier() async {
+        let f = Forecaster()
+        let now = Date()
+        let snap = SessionBlockSnapshot(
+            startedAt: now.addingTimeInterval(-1800),
+            resetsAt:  now.addingTimeInterval(16_200),
+            usedFraction: 0.10, totalTokens: 1
+        )
+        let recent = makeRecentBuckets(now: now, count: 5)
+        let heavyHourly = trustedAllHours(costPerHour: 1000.0)
+
+        let pureEwma = await f.forecastSessionBlock(block: snap, recent: recent, hourly: [],          now: now)
+        let blended  = await f.forecastSessionBlock(block: snap, recent: recent, hourly: heavyHourly, now: now)
+
+        XCTAssertEqual(blended.basis, ForecastResult.Basis.blend)
+        if let bHit = blended.hitAt, let eHit = pureEwma.hitAt {
+            XCTAssertLessThan(bHit, eHit, "heavy pattern ⇒ projected to hit earlier")
+        } else if pureEwma.hitAt == nil {
+            XCTAssertNotNil(blended.hitAt, "pattern should make blend project a hit even if ewma alone wouldn't")
+        }
+    }
+
+    // MARK: - Helpers
+
+    private func trustedAllHours(costPerHour: Double = 1.0, samples: Double = 5.0) -> [HourlyBucket] {
+        var out: [HourlyBucket] = []
+        for wd in 1...7 {
+            for h in 0...23 {
+                out.append(HourlyBucket(weekday: wd, hour: h, costUSD: costPerHour, tokens: 0, sampleCount: samples))
+            }
+        }
+        return out
+    }
+
+    private func makeRecentBuckets(now: Date, count: Int, costUSD: Double = 1.0) -> [CostBucket] {
+        var out: [CostBucket] = []
+        for i in 0..<count {
+            let startOffset = Double(-1500 + 300 * i)
+            let endOffset   = Double(-1200 + 300 * i)
+            out.append(CostBucket(
+                start: now.addingTimeInterval(startOffset),
+                end:   now.addingTimeInterval(endOffset),
+                costUSD: costUSD
+            ))
+        }
+        return out
+    }
 }
