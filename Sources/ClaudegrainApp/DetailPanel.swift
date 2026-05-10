@@ -158,11 +158,17 @@ private struct ReceiptBody: View {
             SectionHeader(label: model.t(.sectionTopCosts))
             TopCostsList()
 
-            DashedDivider()
-            SectionHeader(label: model.t(.sectionTopTools))
-            TopToolsList()
-
+            // TopTools — fixed mode skips so the popover fits an HD screen.
+            // Without this gate, the natural fixed-mode height exceeds the
+            // visibleFrame on smaller MBPs; AppKit then horizontally translates
+            // the popover to keep it on-screen, which the user perceives as
+            // the popover anchor "drifting" away from the menu bar icon.
+            // (Parity with heatmap / ModelMix / Subtotals — see ADR-0015 follow-up.)
             if model.layoutMode == .scroll {
+                DashedDivider()
+                SectionHeader(label: model.t(.sectionTopTools))
+                TopToolsList()
+
                 DashedDivider()
                 SectionHeader(label: model.t(.sectionTimeOfDay))
                 HeatmapView(buckets: model.hourlyBuckets)
@@ -604,24 +610,10 @@ private struct FooterBlock: View {
     }
 
     private func openSettingsWindow() {
-        // LSUIElement = true ⇒ default policy is .accessory; activate explicitly
-        // so the Settings scene window comes forward and accepts focus.
-        NSApp.activate(ignoringOtherApps: true)
-        // `\.openSettings` is the SwiftUI-native path but the CI Xcode 15 SDK
-        // is missing the symbol (see commit 1fd1f27). Selector dispatch hits
-        // the same AppKit hook on macOS 13+. After firing, walk the windows
-        // and bring any settings window forward — selector alone fails to
-        // re-key the window on subsequent taps when the app is LSUIElement.
-        NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-            for w in NSApp.windows {
-                let id = w.identifier?.rawValue.lowercased() ?? ""
-                let title = w.title.lowercased()
-                if id.contains("settings") || title.contains("settings") || title.contains("设置") {
-                    w.makeKeyAndOrderFront(nil)
-                }
-            }
-        }
+        // LSUIElement breaks SwiftUI's Settings scene routing: no main menu ⇒
+        // no responder claims `showSettingsWindow:` ⇒ silent no-op. Host our
+        // own NSWindow instead.
+        SettingsWindowController.shared.show(model: model)
     }
 
     private var refreshButton: some View {

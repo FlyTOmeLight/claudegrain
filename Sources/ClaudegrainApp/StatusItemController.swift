@@ -128,6 +128,12 @@ final class StatusItemController: ObservableObject {
         button.image = tinted
         button.imagePosition = .imageLeading
         button.title = " \(valueText)"
+        // Title/image churn doesn't always re-trigger NSStatusItem's
+        // variableLength width recompute. Without this, the button frame
+        // reported to NSPopover.show(relativeTo:of:) is stale and the
+        // popover anchors to the *previous* button x — visually drifting
+        // away from the menu bar icon.
+        button.invalidateIntrinsicContentSize()
     }
 
     @objc private func handleStatusClick(_ sender: AnyObject?) {
@@ -145,6 +151,10 @@ final class StatusItemController: ObservableObject {
         if popover.isShown {
             closePopover(sender)
         } else {
+            // Belt-and-suspenders: flush any pending status-bar layout so
+            // the source rect we hand NSPopover matches the icon's actual
+            // on-screen position.
+            button.window?.layoutIfNeeded()
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             popover.contentViewController?.view.window?.makeKey()
             installEscMonitor()
