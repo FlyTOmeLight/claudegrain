@@ -35,6 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openPreviewWindow()
             return
         }
+        if ProcessInfo.processInfo.arguments.contains("--snapshot") {
+            populateMockData()
+            renderSnapshot()
+            return
+        }
 
         statusController.attach(model: model)
         Task { await boot() }
@@ -94,13 +99,89 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.weekSpend = [4.2, 5.8, 3.2, 7.1, 6.4, 5.2, 8.42]
     }
 
-    private func openPreviewWindow() {
+    /// Headless snapshot — renders DetailPanel offscreen to a PNG and exits.
+    /// Bypasses screen-size clipping that breaks fixed-mode captures (content
+    /// ~1100pt > visible screen on a 14" MBP).
+    ///
+    /// Args: --snapshot <out_path>
+    /// Env:  CG_PREVIEW_LIGHT=1 → light theme, default dark
+    ///       CG_PREVIEW_FIXED=1 → fixed layout mode, default scroll
+    private func renderSnapshot() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let snapIdx = args.firstIndex(of: "--snapshot"),
+              snapIdx + 1 < args.count else {
+            FileHandle.standardError.write(Data("usage: claudegrain --snapshot <out.png>\n".utf8))
+            exit(2)
+        }
+        let outPath = args[snapIdx + 1]
         let isDark = ProcessInfo.processInfo.environment["CG_PREVIEW_LIGHT"] == nil
-        NSApp.setActivationPolicy(.regular)
+        let isFixed = ProcessInfo.processInfo.environment["CG_PREVIEW_FIXED"] != nil
 
+        model.layoutMode = isFixed ? .fixed : .scroll
+
+        let frameHeight: CGFloat = isFixed ? 1100 : 720
         let detail = DetailPanel().environmentObject(model)
             .preferredColorScheme(isDark ? .dark : .light)
-            .frame(width: 340, height: 720)
+            .frame(width: 340, height: frameHeight)
+
+        let host = NSHostingController(rootView: detail)
+        host.view.frame = NSRect(x: 0, y: 0, width: 340, height: frameHeight)
+        host.view.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
+
+        // SwiftUI/AppKit need a hosting window to resolve the appearance and
+        // scale layout properly — but the window never has to surface. An
+        // offscreen NSWindow positioned at (-10000, -10000) is invisible
+        // even if the user's screen briefly receives focus.
+        let stagingWin = NSWindow(
+            contentRect: NSRect(x: -10000, y: -10000, width: 340, height: frameHeight),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        stagingWin.contentViewController = host
+        stagingWin.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
+        stagingWin.orderFront(nil)
+        host.view.layoutSubtreeIfNeeded()
+
+        // One run-loop spin so SwiftUI commits its first layout pass before we
+        // ask AppKit to cache the display.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+
+        guard let rep = host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds) else {
+            FileHandle.standardError.write(Data("snapshot: bitmap rep failed\n".utf8))
+            exit(3)
+        }
+        host.view.cacheDisplay(in: host.view.bounds, to: rep)
+        guard let data = rep.representation(using: .png, properties: [:]) else {
+            FileHandle.standardError.write(Data("snapshot: png encode failed\n".utf8))
+            exit(4)
+        }
+        do {
+            try data.write(to: URL(fileURLWithPath: outPath))
+            FileHandle.standardOutput.write(Data("wrote \(outPath) (\(data.count) bytes)\n".utf8))
+        } catch {
+            FileHandle.standardError.write(Data("snapshot: write failed: \(error)\n".utf8))
+            exit(5)
+        }
+        exit(0)
+    }
+
+    private func openPreviewWindow() {
+        let isDark = ProcessInfo.processInfo.environment["CG_PREVIEW_LIGHT"] == nil
+        let isFixed = ProcessInfo.processInfo.environment["CG_PREVIEW_FIXED"] != nil
+        NSApp.setActivationPolicy(.regular)
+
+        // Force layout mode for the preview run; persists to user defaults but
+        // the preview process is short-lived and exits before saving.
+        model.layoutMode = isFixed ? .fixed : .scroll
+
+        // Fixed mode renders at intrinsic content height — give the host
+        // window enough vertical room (~1100pt for v1.0 with TopTools/heatmap
+        // gated off scroll). Scroll mode keeps the original 720pt height.
+        let frameHeight: CGFloat = isFixed ? 1100 : 720
+        let detail = DetailPanel().environmentObject(model)
+            .preferredColorScheme(isDark ? .dark : .light)
+            .frame(width: 340, height: frameHeight)
 
         let host = NSHostingController(rootView: detail)
         let win = NSWindow(contentViewController: host)
