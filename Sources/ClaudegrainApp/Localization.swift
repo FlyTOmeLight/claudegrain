@@ -190,7 +190,7 @@ enum L10n {
     }
 
     private static let en: [L: String] = [
-        .versionTagline: "v 0.1 · usage · live",
+        .versionTagline: "usage · live",
         .statusBoot: "BOOT",
         .statusOauth: "OAUTH ✓",
         .statusJsonl: "JSONL",
@@ -342,7 +342,7 @@ enum L10n {
     ]
 
     private static let zh: [L: String] = [
-        .versionTagline: "v 0.1 · 用量 · 实时",
+        .versionTagline: "用量 · 实时",
         .statusBoot: "启动中",
         .statusOauth: "OAUTH ✓",
         .statusJsonl: "JSONL",

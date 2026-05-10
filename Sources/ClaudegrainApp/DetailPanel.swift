@@ -85,7 +85,7 @@ private struct ReceiptBody: View {
     var body: some View {
         VStack(spacing: 6) {
             StencilTitleView()
-            Text(model.t(.versionTagline))
+            Text("v \(Bundle.appVersionShort) · \(model.t(.versionTagline))")
                 .font(.cgMonoXSmall)
                 .tracking(3.2)
                 .foregroundStyle(theme.ink.opacity(0.55))
@@ -596,7 +596,7 @@ private struct FooterBlock: View {
                 Spacer()
                 Text("● MIT 2026")
                 Spacer()
-                Text("0xCG-V0.1")
+                Text("0xCG-V\(Bundle.appVersionShort)")
             }
             .font(.cgMonoXSmall)
             .tracking(0.6)

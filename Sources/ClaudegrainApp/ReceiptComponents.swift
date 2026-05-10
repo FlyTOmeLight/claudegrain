@@ -328,7 +328,12 @@ struct VitalRow: View {
 
     private var asciiBar: String {
         let total = 19
-        let filled = Int((displayPct * Double(total)).rounded())
+        // Defend against NaN (divide-by-zero in upstream rate calcs) and
+        // values > 1 (over-quota). Without clamping, `total - filled` goes
+        // negative and `String(repeating:count:)` traps.
+        let raw = displayPct.isFinite ? displayPct : 0
+        let clamped = max(0.0, min(1.0, raw))
+        let filled = Int((clamped * Double(total)).rounded())
         return String(repeating: "█", count: filled) + String(repeating: "░", count: total - filled)
     }
 }
