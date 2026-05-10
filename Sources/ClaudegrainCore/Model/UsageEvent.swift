@@ -151,6 +151,29 @@ public struct RepoBreakdown: Identifiable, Sendable {
     }
 }
 
+/// Per-(weekday, hour) summary stored in `hourly_buckets`. Cost / tokens /
+/// sample_count are EWMA-decayed (7-day half-life) so the bucket reflects
+/// recent patterns. Powers the time-of-day heatmap and cycle-aware forecast.
+public struct HourlyBucket: Sendable, Equatable {
+    public let weekday: Int      // 1=Sun … 7=Sat (Calendar.component(.weekday))
+    public let hour: Int         // 0…23
+    public let costUSD: Double
+    public let tokens: Int
+    public let sampleCount: Double
+
+    public init(weekday: Int, hour: Int, costUSD: Double, tokens: Int, sampleCount: Double) {
+        self.weekday = weekday
+        self.hour = hour
+        self.costUSD = costUSD
+        self.tokens = tokens
+        self.sampleCount = sampleCount
+    }
+
+    /// Floor used by Forecaster + heatmap legend: hours with <1 effective sample
+    /// are too thin to project from.
+    public var isTrusted: Bool { sampleCount >= 1.0 }
+}
+
 public struct ToolBreakdown: Identifiable, Sendable {
     public var id: String { toolName }
     public let toolName: String
