@@ -35,7 +35,13 @@ struct WeekLineChart: View {
                 }
                 .stroke(theme.ink.opacity(0.18), style: StrokeStyle(lineWidth: 0.5, dash: [1, 4]))
 
-                // Area + line
+                // Area + line — strictly dot-to-dot. Earlier I tried
+                // extending stubs to the chart edges so the visible
+                // region matched the dividers' span, but the line stub
+                // sits at the endpoint dots' y (not at chart bottom),
+                // which read as a tilted baseline against the flat
+                // dividers above/below. Symmetric padding via
+                // `computePoints` keeps the chart visually centered.
                 let pts = computePoints(in: geo.size)
                 let values = effectivePoints
                 if !pts.isEmpty {
@@ -123,9 +129,17 @@ struct WeekLineChart: View {
         let values = effectivePoints
         guard !values.isEmpty else { return [] }
         let maxV = scaleMax
-        let n = max(values.count - 1, 1)
-        let leftPad: CGFloat = 22
-        let usableW = size.width - leftPad - 12
+        // Match the X grid used by `WeekDayLabels` so each dot sits over
+        // its day letter:
+        //   HStack { Spacer 14 · 7×maxWidth cells · Spacer 14 }
+        // The dot for day i lives at the center of cell i. Spacers must
+        // be equal — asymmetric padding made the chart visually drift
+        // right of center (left margin 35 vs right 25), which read as
+        // "the chart is tilted" against the symmetric horizontal divider
+        // immediately above and below.
+        let leftSpacer: CGFloat = 14
+        let rightSpacer: CGFloat = 14
+        let cellW = (size.width - leftSpacer - rightSpacer) / CGFloat(values.count)
         // Reserve top + bottom padding so the dots can never escape the
         // chart frame; the previous formula let v ≈ 0 dots render at
         // size.height + 4, which painted them on top of the day-letter row
@@ -133,7 +147,7 @@ struct WeekLineChart: View {
         let yPad: CGFloat = 4
         let usableH = size.height - 2 * yPad
         return values.enumerated().map { i, v in
-            let x = leftPad + usableW * CGFloat(i) / CGFloat(n)
+            let x = leftSpacer + cellW * (CGFloat(i) + 0.5)
             let y = yPad + usableH * CGFloat(1 - v / maxV)
             return CGPoint(x: x, y: y)
         }
@@ -200,6 +214,9 @@ struct WeekChartPlaceholder: View {
 /// 7d day labels strip (Mo Tu We Th Fr Sa Su). Two-letter ISO abbrevs so
 /// Saturday and Sunday don't both read as "S" — the previous single-letter
 /// strip ambiguated weekend days. Sunday gets bold neon for today.
+///
+/// Side spacers are intentionally equal — `WeekLineChart` mirrors the same
+/// 14pt symmetric margin in `computePoints`. Keep them in sync.
 struct WeekDayLabels: View {
     @Environment(\.theme) private var theme
     var body: some View {
@@ -211,7 +228,7 @@ struct WeekDayLabels: View {
             }
             Text("Su").font(.cgMonoXSmall.weight(.bold)).foregroundStyle(theme.inkBold)
                 .frame(maxWidth: .infinity)
-            Spacer().frame(width: 4)
+            Spacer().frame(width: 14)
         }
     }
 }
