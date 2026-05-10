@@ -124,6 +124,21 @@ public actor EventsDatabase {
                 )
             """)
         }
+        // v6: drop legacy events that lack a dedup_key. Pre-v2 ingest accepted
+        // rows even when message.id / requestId were absent (e.g. type=last-prompt
+        // header lines that an earlier parser tolerated), and the partial unique
+        // index leaves them un-deduped, so every JSONL re-read multiplies them.
+        // Sampling on a real db showed 6,118 of 6,449 5-04 rows were these
+        // ghosts — inflating Monday by an order of magnitude. SQLite is a
+        // materialized view per ADR-0002, the cursor + JSONL backfill rebuilds
+        // them on next launch.
+        migrator.registerMigration("v6-purge-null-dedup") { db in
+            try db.execute(sql: "DELETE FROM events WHERE dedup_key IS NULL")
+            // Reset cursors so the JSONL backfill replays from offset 0 on
+            // next ingest tick. Without this, the (source_file, source_offset)
+            // unique index keeps the deleted rows from being re-inserted.
+            try db.execute(sql: "DELETE FROM cursors")
+        }
         try migrator.migrate(pool)
     }
 
