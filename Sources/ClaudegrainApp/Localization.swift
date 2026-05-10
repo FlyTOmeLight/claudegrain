@@ -23,6 +23,7 @@ enum L: String, Hashable {
     case sectionUsageLimits
     case sectionSpend7d
     case sectionTopCosts
+    case sectionTopTools
 
     // Vitals
     case vitalSession
@@ -114,6 +115,7 @@ enum L: String, Hashable {
     // v0.2 — empty states
     case chartCollectingBaseline
     case topReposWatching
+    case topToolsWatching
     case oauthDegradedTitle
     case oauthDegradedDismiss
     case statusAsOf
@@ -201,6 +203,7 @@ enum L10n {
         .sectionUsageLimits: "USAGE LIMITS",
         .sectionSpend7d: "7d SPEND · LINE",
         .sectionTopCosts: "TOP COSTS · 7d trend",
+        .sectionTopTools: "TOP TOOLS · by share",
 
         .vitalSession: "SESSION",
         .vitalWeekly: "WEEKLY",
@@ -276,6 +279,7 @@ enum L10n {
 
         .chartCollectingBaseline:   "Collecting 7-day baseline…",
         .topReposWatching:          "watching ~/.claude/projects…",
+        .topToolsWatching:          "no tool turns yet…",
         .oauthDegradedTitle:        "Real-time quota disabled — showing JSONL estimate.",
         .oauthDegradedDismiss:      "Dismiss",
         .statusAsOf:                "as of %@",
@@ -347,6 +351,7 @@ enum L10n {
         .sectionUsageLimits: "用量限额",
         .sectionSpend7d: "7 日花费 · 折线",
         .sectionTopCosts: "Top 仓库 · 7 日趋势",
+        .sectionTopTools: "Top 工具 · 按 share",
 
         .vitalSession: "本次会话",
         .vitalWeekly: "本周",
@@ -422,6 +427,7 @@ enum L10n {
 
         .chartCollectingBaseline:   "正在采集 7 天基线…",
         .topReposWatching:          "监听 ~/.claude/projects…",
+        .topToolsWatching:          "暂无工具调用…",
         .oauthDegradedTitle:        "实时配额已停用 — 当前为 JSONL 估算值。",
         .oauthDegradedDismiss:      "关闭",
         .statusAsOf:                "(于 %@)",
