@@ -121,6 +121,7 @@ final class NotificationManager {
             content.title = title
             content.body = body
             content.sound = .default
+            content.interruptionLevel = .timeSensitive
             content.categoryIdentifier = Self.repoOverspendCategoryID
             content.userInfo = ["repo": repo.id, "cost": repo.costUSD]
             let req = UNNotificationRequest(
@@ -221,6 +222,11 @@ final class NotificationManager {
         content.body = body
         // TODO: replace with custom asset when SoundChoice.app gets a bundled file.
         content.sound = .default
+        // macOS 14+ silently drops sound for transient banner-style alerts
+        // unless the notification is marked time-sensitive. Quota / budget
+        // alerts genuinely are time-sensitive (the user wants to react
+        // before they bust the quota), so the elevation matches intent.
+        content.interruptionLevel = .timeSensitive
         let req = UNNotificationRequest(identifier: kind.rawValue, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req, withCompletionHandler: nil)
     }
