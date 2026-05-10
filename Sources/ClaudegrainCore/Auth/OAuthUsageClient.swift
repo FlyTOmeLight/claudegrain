@@ -2,12 +2,20 @@ import Foundation
 
 public enum OAuthUsageError: Error, LocalizedError {
     case http(status: Int, body: String)
+    /// 429 with the server-suggested wait. Distinct from `.http` so the
+    /// coordinator can honor a real Retry-After value instead of the prior
+    /// hard-coded 60-second guess that fueled retry storms when Anthropic
+    /// asked for longer.
+    case rateLimited(retryAfter: TimeInterval?, body: String)
     case decoding(String)
     case transport(Error)
 
     public var errorDescription: String? {
         switch self {
         case .http(let status, let body): return "HTTP \(status): \(body.prefix(200))"
+        case .rateLimited(let after, let body):
+            let suffix = after.map { " (retry after \(Int($0))s)" } ?? " (no Retry-After header)"
+            return "HTTP 429\(suffix): \(body.prefix(200))"
         case .decoding(let msg): return "Decode failed: \(msg)"
         case .transport(let err): return "Transport: \(err.localizedDescription)"
         }
@@ -58,11 +66,39 @@ public struct OAuthUsageClient {
         guard let http = response as? HTTPURLResponse else {
             throw OAuthUsageError.http(status: -1, body: "non-HTTP response")
         }
+        if http.statusCode == 429 {
+            let body = String(data: data, encoding: .utf8) ?? ""
+            throw OAuthUsageError.rateLimited(
+                retryAfter: Self.parseRetryAfter(http.value(forHTTPHeaderField: "Retry-After")),
+                body: body
+            )
+        }
         guard (200..<300).contains(http.statusCode) else {
             let body = String(data: data, encoding: .utf8) ?? ""
             throw OAuthUsageError.http(status: http.statusCode, body: body)
         }
         return try Self.decode(data: data)
+    }
+
+    /// HTTP `Retry-After` header parser. Per RFC 7231 the value is either
+    /// a delta-seconds integer or an HTTP-date. Returns the seconds-from-now
+    /// equivalent, or nil if the header is absent or malformed.
+    static func parseRetryAfter(_ raw: String?, now: Date = Date()) -> TimeInterval? {
+        guard let raw, !raw.isEmpty else { return nil }
+        if let seconds = Double(raw.trimmingCharacters(in: .whitespaces)) {
+            return max(0, seconds)
+        }
+        // HTTP-date forms — IMF-fixdate, RFC-850, asctime. DateFormatter
+        // covers the canonical IMF-fixdate; the others are uncommon in
+        // practice for modern APIs.
+        let fmt = DateFormatter()
+        fmt.locale = Locale(identifier: "en_US_POSIX")
+        fmt.timeZone = TimeZone(secondsFromGMT: 0)
+        fmt.dateFormat = "EEE, dd MMM yyyy HH:mm:ss zzz"
+        if let date = fmt.date(from: raw) {
+            return max(0, date.timeIntervalSince(now))
+        }
+        return nil
     }
 
     static func decode(data: Data) throws -> OAuthUsageResponse {

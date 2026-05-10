@@ -1,4 +1,5 @@
 import Foundation
+import os.log
 
 /// Implements the state machine described in docs/adr/0004-data-source-coordinator.md.
 ///
@@ -29,6 +30,7 @@ public actor DataSourceCoordinator {
     private var pollTask: Task<Void, Never>?
     private var continuation: AsyncStream<Snapshot>.Continuation?
     private var lastSnapshot: Snapshot?
+    private static let logger = Logger(subsystem: "dev.claudegrain.menubar", category: "oauth")
 
     public init(
         keychain: KeychainTokenReader = .init(),
@@ -76,9 +78,11 @@ public actor DataSourceCoordinator {
         do {
             token = try keychain.readAccessToken()
         } catch KeychainTokenError.notLoggedIn {
+            Self.logger.info("OAuth tick: keychain has no token; degrading to JSONL")
             transition(to: .jsonlOnly)
             return
         } catch {
+            Self.logger.error("OAuth tick: keychain read failed: \(String(describing: error), privacy: .public)")
             transition(to: .oauthAuthError)
             return
         }
@@ -93,20 +97,24 @@ public actor DataSourceCoordinator {
             )
             lastSnapshot = snap
             continuation?.yield(snap)
+        } catch let OAuthUsageError.rateLimited(retryAfter, body) {
+            handleRateLimit(retryAfter: retryAfter, body: body)
         } catch let OAuthUsageError.http(status, body) {
             handleHTTPError(status: status, body: body)
+        } catch let OAuthUsageError.transport(inner) {
+            // Transient transport — keep state, but log so we can audit
+            // recurring drops to JSONL after the fact.
+            Self.logger.info("OAuth tick: transport error (state preserved): \(String(describing: inner), privacy: .public)")
         } catch {
-            // Transient transport — keep state, but emit nothing new.
+            Self.logger.info("OAuth tick: unknown error (state preserved): \(String(describing: error), privacy: .public)")
         }
     }
 
     private func handleHTTPError(status: Int, body: String) {
+        Self.logger.warning("OAuth HTTP \(status, privacy: .public): \(body.prefix(200), privacy: .public)")
         switch status {
         case 401, 403:
             transition(to: .oauthAuthError)
-        case 429:
-            let retry = Date().addingTimeInterval(60) // server should send Retry-After; default 60s
-            transition(to: .oauthBackoff(until: retry))
         case 500...599:
             // Stay in oauthLive so UI keeps last-good snapshot. Next tick retries.
             break
@@ -116,6 +124,18 @@ public actor DataSourceCoordinator {
                 transition(to: .oauthDeprecated)
             }
         }
+    }
+
+    /// Honors the server's Retry-After header when present; falls back to
+    /// 60s only when absent. The previous hard-coded 60s would burn through
+    /// repeated 429s when Anthropic asked for a longer cool-down (observed
+    /// 22+ minute degradations in production).
+    private func handleRateLimit(retryAfter: TimeInterval?, body: String) {
+        let wait = retryAfter ?? 60
+        let retryAfterDesc = retryAfter == nil ? "missing" : String(Int(retryAfter!))
+        Self.logger.warning("OAuth 429 — backoff \(Int(wait), privacy: .public)s (Retry-After \(retryAfterDesc, privacy: .public))")
+        let until = Date().addingTimeInterval(wait)
+        transition(to: .oauthBackoff(until: until))
     }
 
     private func sleepDuration() -> Duration {
@@ -133,6 +153,7 @@ public actor DataSourceCoordinator {
 
     private func transition(to next: State) {
         guard state != next else { return }
+        Self.logger.notice("OAuth state: \(String(describing: self.state), privacy: .public) → \(String(describing: next), privacy: .public)")
         state = next
         if let last = lastSnapshot {
             continuation?.yield(.init(session: last.session, weekly: last.weekly, state: next))

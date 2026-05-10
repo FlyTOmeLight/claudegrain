@@ -1,5 +1,6 @@
 import Foundation
 import UserNotifications
+import os.log
 import ClaudegrainCore
 
 enum NotificationKind: String, Hashable {
@@ -29,6 +30,7 @@ final class NotificationManager {
     private var burnRateFiredFor: Date?
     private var repoOverspendFired: Set<RepoOverspendKey> = []
     private var authRequested = false
+    private static let logger = Logger(subsystem: "dev.claudegrain.menubar", category: "notify")
 
     init(
         prefs: Preferences? = nil,
@@ -119,6 +121,7 @@ final class NotificationManager {
             content.title = title
             content.body = body
             content.sound = .default
+            content.interruptionLevel = .timeSensitive
             content.categoryIdentifier = Self.repoOverspendCategoryID
             content.userInfo = ["repo": repo.id, "cost": repo.costUSD]
             let req = UNNotificationRequest(
@@ -170,7 +173,11 @@ final class NotificationManager {
     }
 
     private func fire(_ kind: NotificationKind, title: String, body: String) {
-        guard shouldDeliver(now: Date()) else { return }
+        guard shouldDeliver(now: Date()) else {
+            Self.logger.info("notification \(kind.rawValue, privacy: .public) suppressed by quiet hours")
+            return
+        }
+        Self.logger.notice("notification fire: \(kind.rawValue, privacy: .public) — \(title, privacy: .public)")
         handler(kind, title, body)
     }
 
@@ -182,7 +189,13 @@ final class NotificationManager {
         guard usesSystemCenter, !authRequested else { return }
         authRequested = true
         let center = UNUserNotificationCenter.current()
-        center.requestAuthorization(options: [.alert, .sound]) { _, _ in }
+        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+            if let error {
+                Self.logger.error("notification auth request failed: \(String(describing: error), privacy: .public)")
+            } else {
+                Self.logger.notice("notification auth granted=\(granted, privacy: .public)")
+            }
+        }
 
         let mark = UNNotificationAction(
             identifier: Self.actionMarkPaused,
@@ -209,6 +222,11 @@ final class NotificationManager {
         content.body = body
         // TODO: replace with custom asset when SoundChoice.app gets a bundled file.
         content.sound = .default
+        // macOS 14+ silently drops sound for transient banner-style alerts
+        // unless the notification is marked time-sensitive. Quota / budget
+        // alerts genuinely are time-sensitive (the user wants to react
+        // before they bust the quota), so the elevation matches intent.
+        content.interruptionLevel = .timeSensitive
         let req = UNNotificationRequest(identifier: kind.rawValue, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(req, withCompletionHandler: nil)
     }
