@@ -18,7 +18,6 @@ final class StatusItemController: ObservableObject {
         self.popover.animates = true
     }
 
-    private var observers: [NSKeyValueObservation] = []
     private var modelCancellable: AnyObject?
 
     /// Memoized signature of the last applied button state. AppModel publishes
@@ -50,28 +49,18 @@ final class StatusItemController: ObservableObject {
         let panel = DetailPanel().environmentObject(model)
         let host = NSHostingController(rootView: panel)
         // .preferredContentSize tells the host to publish its intrinsic
-        // SwiftUI content size via `preferredContentSize`. We KVO on it and
-        // mirror to popover.contentSize so the fixed-layout mode resizes the
-        // popover to fit the actual content (no clip, no scrollbar).
+        // SwiftUI content size; NSPopover observes the controller's
+        // preferredContentSize natively and resizes itself. The previous
+        // version of this file ALSO ran a manual KVO that re-wrote
+        // `popover.contentSize` async (with a screen-clamp clamp on top).
+        // The async re-write fired AFTER NSPopover had already chosen its
+        // anchor for the prior size — and AppKit doesn't re-anchor when
+        // contentSize changes mid-display. The user-visible symptom was
+        // the popover drifting horizontally away from the menu-bar icon
+        // every time content height crossed the clamp boundary. Trust
+        // the native pipeline.
         host.sizingOptions = [.preferredContentSize]
         popover.contentViewController = host
-        popover.contentSize = NSSize(width: 340, height: 720)
-
-        // Track host's intrinsic size → popover.contentSize. Clamp height to
-        // available screen so a tall fixed-mode layout never gets its top
-        // clipped by the menu bar / screen edge.
-        let sizeObs = host.observe(\.preferredContentSize, options: [.new]) { [weak self] hc, _ in
-            guard let self else { return }
-            let s = hc.preferredContentSize
-            guard s.width > 0, s.height > 0 else { return }
-            DispatchQueue.main.async {
-                let width: CGFloat = 340
-                let visible = NSScreen.main?.visibleFrame.height ?? 800
-                let maxH = max(400, visible - 40)
-                self.popover.contentSize = NSSize(width: width, height: min(s.height, maxH))
-            }
-        }
-        self.observers = [sizeObs]
 
         // Re-render menu bar label on AppModel changes (popover updates itself).
         let cancel = model.objectWillChange.sink { [weak self] _ in

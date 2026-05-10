@@ -35,6 +35,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             openPreviewWindow()
             return
         }
+        if ProcessInfo.processInfo.arguments.contains("--snapshot") {
+            populateMockData()
+            renderSnapshot()
+            return
+        }
 
         statusController.attach(model: model)
         Task { await boot() }
@@ -92,15 +97,140 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         model.cacheHitRate = 0.87
         model.dataSourceStatus = .oauthLive
         model.weekSpend = [4.2, 5.8, 3.2, 7.1, 6.4, 5.2, 8.42]
+
+        model.topTools = [
+            .init(toolName: "Bash", mcpServer: nil, costUSD: 2.40, totalTokens: 380_000),
+            .init(toolName: "Edit", mcpServer: nil, costUSD: 1.80, totalTokens: 290_000),
+            .init(toolName: "Read", mcpServer: nil, costUSD: 1.50, totalTokens: 220_000),
+            .init(toolName: "Write", mcpServer: nil, costUSD: 1.10, totalTokens: 170_000),
+            .init(toolName: "ScheduleWakeup", mcpServer: nil, costUSD: 0.62, totalTokens: 90_000),
+        ]
+        model.modelMix = [
+            .opus:   0.43,
+            .sonnet: 0.50,
+            .haiku:  0.07,
+        ]
+        model.weekDelta = WeekDelta(
+            thisWeekCost: 38.40,
+            lastWeekCost: 31.20,
+            cacheHitDelta: 0.04
+        )
+        model.forecastBlock = ForecastResult(
+            willHit: false,
+            hitAt: nil,
+            confidence: .high,
+            basis: .ewma
+        )
+        // 168 (weekday × hour) buckets — realistic-ish weekday workday curve so
+        // the heatmap renders something other than empty cells.
+        model.hourlyBuckets = (1...7).flatMap { wd -> [HourlyBucket] in
+            (0..<24).map { hr in
+                let weekday = wd
+                let workish = (weekday >= 2 && weekday <= 6) ? 1.0 : 0.35
+                let hourCurve: Double = {
+                    switch hr {
+                    case 9...12: return 1.0
+                    case 13...17: return 0.85
+                    case 19...22: return 0.55
+                    case 0...6: return 0.05
+                    default: return 0.25
+                    }
+                }()
+                let intensity = workish * hourCurve
+                return HourlyBucket(
+                    weekday: weekday,
+                    hour: hr,
+                    costUSD: intensity * 0.9,
+                    tokens: Int(intensity * 110_000),
+                    sampleCount: intensity * 4
+                )
+            }
+        }
+    }
+
+    /// Headless snapshot — renders DetailPanel offscreen to a PNG and exits.
+    /// Bypasses screen-size clipping that breaks fixed-mode captures (content
+    /// ~1100pt > visible screen on a 14" MBP).
+    ///
+    /// Args: --snapshot <out_path>
+    /// Env:  CG_PREVIEW_LIGHT=1 → light theme, default dark
+    ///       CG_PREVIEW_FIXED=1 → fixed layout mode, default scroll
+    private func renderSnapshot() {
+        let args = ProcessInfo.processInfo.arguments
+        guard let snapIdx = args.firstIndex(of: "--snapshot"),
+              snapIdx + 1 < args.count else {
+            FileHandle.standardError.write(Data("usage: claudegrain --snapshot <out.png>\n".utf8))
+            exit(2)
+        }
+        let outPath = args[snapIdx + 1]
+        let isDark = ProcessInfo.processInfo.environment["CG_PREVIEW_LIGHT"] == nil
+        let isFixed = ProcessInfo.processInfo.environment["CG_PREVIEW_FIXED"] != nil
+
+        model.layoutMode = isFixed ? .fixed : .scroll
+
+        let frameHeight: CGFloat = isFixed ? 1300 : 720
+        let detail = DetailPanel().environmentObject(model)
+            .preferredColorScheme(isDark ? .dark : .light)
+            .frame(width: 340, height: frameHeight)
+
+        let host = NSHostingController(rootView: detail)
+        host.view.frame = NSRect(x: 0, y: 0, width: 340, height: frameHeight)
+        host.view.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
+
+        // SwiftUI/AppKit need a hosting window to resolve the appearance and
+        // scale layout properly — but the window never has to surface. An
+        // offscreen NSWindow positioned at (-10000, -10000) is invisible
+        // even if the user's screen briefly receives focus.
+        let stagingWin = NSWindow(
+            contentRect: NSRect(x: -10000, y: -10000, width: 340, height: frameHeight),
+            styleMask: [.borderless],
+            backing: .buffered,
+            defer: false
+        )
+        stagingWin.contentViewController = host
+        stagingWin.appearance = NSAppearance(named: isDark ? .darkAqua : .aqua)
+        stagingWin.orderFront(nil)
+        host.view.layoutSubtreeIfNeeded()
+
+        // One run-loop spin so SwiftUI commits its first layout pass before we
+        // ask AppKit to cache the display.
+        RunLoop.main.run(until: Date().addingTimeInterval(0.5))
+
+        guard let rep = host.view.bitmapImageRepForCachingDisplay(in: host.view.bounds) else {
+            FileHandle.standardError.write(Data("snapshot: bitmap rep failed\n".utf8))
+            exit(3)
+        }
+        host.view.cacheDisplay(in: host.view.bounds, to: rep)
+        guard let data = rep.representation(using: .png, properties: [:]) else {
+            FileHandle.standardError.write(Data("snapshot: png encode failed\n".utf8))
+            exit(4)
+        }
+        do {
+            try data.write(to: URL(fileURLWithPath: outPath))
+            FileHandle.standardOutput.write(Data("wrote \(outPath) (\(data.count) bytes)\n".utf8))
+        } catch {
+            FileHandle.standardError.write(Data("snapshot: write failed: \(error)\n".utf8))
+            exit(5)
+        }
+        exit(0)
     }
 
     private func openPreviewWindow() {
         let isDark = ProcessInfo.processInfo.environment["CG_PREVIEW_LIGHT"] == nil
+        let isFixed = ProcessInfo.processInfo.environment["CG_PREVIEW_FIXED"] != nil
         NSApp.setActivationPolicy(.regular)
 
+        // Force layout mode for the preview run; persists to user defaults but
+        // the preview process is short-lived and exits before saving.
+        model.layoutMode = isFixed ? .fixed : .scroll
+
+        // Fixed mode renders at intrinsic content height — give the host
+        // window enough vertical room (~1100pt for v1.0 with TopTools/heatmap
+        // gated off scroll). Scroll mode keeps the original 720pt height.
+        let frameHeight: CGFloat = isFixed ? 1300 : 720
         let detail = DetailPanel().environmentObject(model)
             .preferredColorScheme(isDark ? .dark : .light)
-            .frame(width: 340, height: 720)
+            .frame(width: 340, height: frameHeight)
 
         let host = NSHostingController(rootView: detail)
         let win = NSWindow(contentViewController: host)

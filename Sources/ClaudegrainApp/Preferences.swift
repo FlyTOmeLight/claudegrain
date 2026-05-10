@@ -19,6 +19,17 @@ enum LayoutMode: String, CaseIterable, Codable, Hashable {
     case fixed    // Plain VStack — no scroll, popover sized to content
 }
 
+/// Optional ReceiptBody sections that the user can toggle on in fixed mode.
+/// Each section adds visible height; toggling many on a small display will
+/// push the popover past visibleFrame and clip from the top.
+enum FixedSection: String, CaseIterable, Codable, Hashable {
+    case weekDelta
+    case topTools
+    case heatmap
+    case modelMix
+    case subtotals
+}
+
 enum SoundChoice: Equatable, Hashable, Codable {
     case app
     case system(name: String)
@@ -37,6 +48,7 @@ final class Preferences: ObservableObject {
         static let notificationSound = "notificationSound"
         static let language = "language"
         static let layoutMode = "layoutMode"
+        static let fixedSections = "fixedSections.v1"
         static let quietHours = "quietHours.v1"
     }
 
@@ -78,6 +90,25 @@ final class Preferences: ObservableObject {
         }
         set {
             defaults.set(newValue.rawValue, forKey: Key.layoutMode)
+            objectWillChange.send()
+        }
+    }
+
+    /// Which optional sections render in fixed mode. Empty by default —
+    /// keeps the popover within a 14" MBP visibleFrame. The user opts in
+    /// per section in Settings, with a one-line warning that piling
+    /// them on may clip the top.
+    var fixedSections: Set<FixedSection> {
+        get {
+            guard let data = defaults.data(forKey: Key.fixedSections),
+                  let arr = try? JSONDecoder().decode([FixedSection].self, from: data)
+            else { return [] }
+            return Set(arr)
+        }
+        set {
+            if let data = try? JSONEncoder().encode(Array(newValue)) {
+                defaults.set(data, forKey: Key.fixedSections)
+            }
             objectWillChange.send()
         }
     }
