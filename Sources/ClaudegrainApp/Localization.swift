@@ -162,6 +162,13 @@ enum L: String, Hashable {
     case sgLayout
     case sgLayoutScroll
     case sgLayoutFixed
+    case sgFixedSectionsHeader
+    case sgFixedSectionsWarning
+    case sgFixedShowWeekDelta
+    case sgFixedShowTopTools
+    case sgFixedShowHeatmap
+    case sgFixedShowModelMix
+    case sgFixedShowSubtotals
 
     // Settings — notifications
     case snTriggers
@@ -324,6 +331,13 @@ enum L10n {
         .sgLayout: "Layout",
         .sgLayoutScroll: "Scrollable",
         .sgLayoutFixed: "Fixed (no scroll)",
+        .sgFixedSectionsHeader: "Fixed-mode sections",
+        .sgFixedSectionsWarning: "Each section adds height. On a small display, enabling many may clip the popover top — switch to Scrollable if that happens.",
+        .sgFixedShowWeekDelta: "Show Δ vs last week",
+        .sgFixedShowTopTools: "Show top tools",
+        .sgFixedShowHeatmap: "Show time-of-day heatmap",
+        .sgFixedShowModelMix: "Show model mix",
+        .sgFixedShowSubtotals: "Show subtotals breakdown",
 
         .snTriggers: "Triggers",
         .snThreshold: "Threshold alerts (session 70/90% · weekly 85%)",
@@ -476,6 +490,13 @@ enum L10n {
         .sgLayout: "布局",
         .sgLayoutScroll: "可滚动",
         .sgLayoutFixed: "定屏(不滚动)",
+        .sgFixedSectionsHeader: "定屏模式 · 显示项",
+        .sgFixedSectionsWarning: "每开启一项会增加 popover 高度。小屏幕上勾太多可能切掉顶部 — 出现时改回\"可滚动\"。",
+        .sgFixedShowWeekDelta: "显示 Δ 对比上周",
+        .sgFixedShowTopTools: "显示 Top 工具",
+        .sgFixedShowHeatmap: "显示时段热图",
+        .sgFixedShowModelMix: "显示模型分布",
+        .sgFixedShowSubtotals: "显示累计明细",
 
         .snTriggers: "触发条件",
         .snThreshold: "阈值告警 (会话 70/90% · 本周 85%)",

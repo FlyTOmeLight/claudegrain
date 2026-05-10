@@ -46,13 +46,24 @@ private struct ReceiptScroll: View {
             }
             .frame(height: 720)
         case .fixed:
-            // Fixed mode: intrinsic size only. NSHostingController.sizingOptions
-            // = .preferredContentSize publishes the natural content height; the
-            // status item controller mirrors it to the popover.
-            ReceiptBody()
-                .padding(.horizontal, 14)
-                .padding(.vertical, 12)
-                .fixedSize(horizontal: false, vertical: true)
+            // Fixed mode: ScrollView wrapper + maxHeight cap so the popover
+            // never grows past the screen's visibleFrame. Without the cap,
+            // enabling enough optional sections in Settings would push
+            // popover.contentSize past visibleFrame and AppKit would
+            // horizontally translate the popover off its anchor — the
+            // recurring "popover drifted away from the menu icon" bug.
+            // .fixedSize(vertical: true) lets the frame collapse to the
+            // *natural* height when content fits, so the popover still
+            // looks like a fixed-size receipt for the common case.
+            let visibleH = NSScreen.main?.visibleFrame.height ?? 800
+            let maxH = max(400, visibleH - 60)
+            ScrollView(.vertical, showsIndicators: false) {
+                ReceiptBody()
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+            }
+            .frame(maxHeight: maxH)
+            .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -115,8 +126,15 @@ private struct ReceiptBody: View {
 
             DashedDivider()
 
-            WeekDeltaRow(delta: model.weekDelta)
-            DashedDivider()
+            // Optional sections — scroll mode always shows them; fixed
+            // mode shows only what the user opted into via Settings.
+            // Adding many in fixed mode can push the popover past the
+            // visibleFrame and clip the top — Settings tab carries that
+            // warning.
+            if model.showsSection(.weekDelta) {
+                WeekDeltaRow(delta: model.weekDelta)
+                DashedDivider()
+            }
 
             SectionHeader(label: model.t(.sectionUsageLimits))
             VStack(spacing: 2) {
@@ -155,21 +173,29 @@ private struct ReceiptBody: View {
             SectionHeader(label: model.t(.sectionTopCosts))
             TopCostsList()
 
-            DashedDivider()
-            SectionHeader(label: model.t(.sectionTopTools))
-            TopToolsList()
+            if model.showsSection(.topTools) {
+                DashedDivider()
+                SectionHeader(label: model.t(.sectionTopTools))
+                TopToolsList()
+            }
 
-            DashedDivider()
-            SectionHeader(label: model.t(.sectionTimeOfDay))
-            HeatmapView(buckets: model.hourlyBuckets)
+            if model.showsSection(.heatmap) {
+                DashedDivider()
+                SectionHeader(label: model.t(.sectionTimeOfDay))
+                HeatmapView(buckets: model.hourlyBuckets)
+            }
 
-            DashedDivider()
-            ModelMixRow(mix: model.modelMix)
+            if model.showsSection(.modelMix) {
+                DashedDivider()
+                ModelMixRow(mix: model.modelMix)
+            }
 
             DoubleDivider()
 
-            SubtotalsBlock()
-            DoubleDivider()
+            if model.showsSection(.subtotals) {
+                SubtotalsBlock()
+                DoubleDivider()
+            }
 
             NetTotalRow()
 
@@ -374,25 +400,35 @@ private struct CostRow: View {
                 .tracking(0.8)
                 .foregroundStyle(theme.ink.opacity(0.6))
                 .frame(width: 22)
+            // Fixed-width name column with tail truncation — keeps the
+            // sparkline + delta + price columns aligned across rows even
+            // when one repo path is much longer than its neighbors.
+            // Without this, `.fixedSize(horizontal: true)` let a long
+            // path push everything right, splitting the price across
+            // two lines on narrow rows ("$118.64" → "$118.6\n4").
             Text(shorten(name))
                 .font(.custom("JetBrains Mono", size: 10.5))
                 .foregroundStyle(theme.ink)
-                .fixedSize(horizontal: true, vertical: false)
+                .lineLimit(1)
+                .truncationMode(.tail)
+                .frame(maxWidth: 130, alignment: .leading)
             DotLeader()
             MiniSparkline(points: sparkPoints)
             if let pct = deltaPct {
                 Text("\(pct >= 0 ? "↑" : "↓")\(abs(pct))")
                     .font(.cgMonoSmall.weight(.bold))
                     .foregroundStyle(pct >= 0 ? theme.crit : theme.inkBold)
-                    .frame(width: 28, alignment: .trailing)
+                    .frame(width: 30, alignment: .trailing)
             } else {
-                Spacer().frame(width: 28)
+                Spacer().frame(width: 30)
             }
+            // Widen price column to fit $XXX.XX (≈48pt) — 44pt was the
+            // cause of the wrap on $118.64.
             Text(String(format: "$%.2f", costUSD))
                 .font(.custom("JetBrains Mono", size: 11).weight(.bold))
                 .foregroundStyle(theme.ink)
-                .frame(width: 44, alignment: .trailing)
-                .fixedSize()
+                .lineLimit(1)
+                .frame(width: 56, alignment: .trailing)
         }
     }
 
@@ -753,6 +789,18 @@ struct SettingsView: View {
                 Text(model.t(.sgLayoutScroll)).tag(LayoutMode.scroll)
                 Text(model.t(.sgLayoutFixed)).tag(LayoutMode.fixed)
             }
+            if model.layoutMode == .fixed {
+                Section(model.t(.sgFixedSectionsHeader)) {
+                    Text(model.t(.sgFixedSectionsWarning))
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                    fixedSectionToggle(.weekDelta, label: .sgFixedShowWeekDelta)
+                    fixedSectionToggle(.topTools,  label: .sgFixedShowTopTools)
+                    fixedSectionToggle(.heatmap,   label: .sgFixedShowHeatmap)
+                    fixedSectionToggle(.modelMix,  label: .sgFixedShowModelMix)
+                    fixedSectionToggle(.subtotals, label: .sgFixedShowSubtotals)
+                }
+            }
             Toggle(model.t(.sgOpenAtLogin), isOn: Binding(
                 get: { model.loginItem.isEnabled },
                 set: { model.loginItem.setEnabled($0) }
@@ -806,6 +854,18 @@ struct SettingsView: View {
             }
         }
         .padding(24)
+    }
+
+    @ViewBuilder
+    private func fixedSectionToggle(_ section: FixedSection, label: L) -> some View {
+        Toggle(model.t(label), isOn: Binding(
+            get: { model.fixedSections.contains(section) },
+            set: { isOn in
+                var s = model.fixedSections
+                if isOn { s.insert(section) } else { s.remove(section) }
+                model.fixedSections = s
+            }
+        ))
     }
 
     private func prefBinding(_ keyPath: ReferenceWritableKeyPath<Preferences, Bool>) -> Binding<Bool> {

@@ -67,6 +67,17 @@ final class AppModel: ObservableObject {
         set { preferences.layoutMode = newValue; objectWillChange.send() }
     }
 
+    var fixedSections: Set<FixedSection> {
+        get { preferences.fixedSections }
+        set { preferences.fixedSections = newValue; objectWillChange.send() }
+    }
+
+    /// Whether `section` should render in the current layout mode. Scroll
+    /// always shows everything; fixed shows only what the user opted into.
+    func showsSection(_ section: FixedSection) -> Bool {
+        layoutMode == .scroll || fixedSections.contains(section)
+    }
+
     /// Localization shortcut. Reads the user's language preference each call,
     /// so views automatically retranslate after a language switch (because
     /// `Preferences.objectWillChange` flows through the model).
